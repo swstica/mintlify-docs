@@ -1,15 +1,16 @@
 ---
 title: "Collect data & train a policy"
-description: "The imitation-learning loop: demonstrate a task, record episodes, export a LeRobot dataset, train"
+description: "The imitation-learning loop: demonstrate a task, record episodes, export a LeRobot dataset, train, and run the policy back on the robot"
 ---
 
-End-to-end: demonstrate a task on an arm, record episodes to a session DB, convert that DB into a LeRobot or HDF5 dataset, and train an imitation-learning policy on it.
+End-to-end: demonstrate a task on an arm, record episodes to a session DB, convert that DB into a LeRobot or HDF5 dataset, train an imitation-learning policy on it, and run that policy back on the robot.
 
 ```
-demonstrate (teach mode / Quest VR) ─▶ episodes in a session .db ─▶ dimos dataprep ─▶ LeRobot dataset ─▶ train
+demonstrate ─▶ episodes in a session .db ─▶ dimos dataprep ─▶ LeRobot dataset ─▶ train ─▶ run on the robot
+ (teach / VR)     (recorded)                (LeRobot/HDF5)     (LeRobot, ACT)   (policy module)
 ```
 
-DimOS ships everything up to and including the dataset. Training itself runs in [LeRobot](https://github.com/huggingface/lerobot); the deploy-back-to-DimOS story is in progress (status below).
+Each arrow is one command. DimOS ships collection, dataset export, and — on the Galaxea A1Z today — running a trained checkpoint back on hardware. Training itself runs in [LeRobot](https://github.com/huggingface/lerobot).
 
 ## 1. Record demonstrations
 
@@ -114,8 +115,27 @@ The LeRobot dataset is the handoff point. What it unlocks, roughly in order of e
 - **pi0 / pi0-FAST** - fine-tunable in LeRobot, but wants datacenter-class GPUs.
 - **GR00T** - NVIDIA's fine-tuning pipeline consumes LeRobot datasets directly.
 
+A completed training run does not by itself mean the policy generalizes - quality tracks demonstration count, consistency, and coverage. The ACT checkpoint you deploy lands at `outputs/<job_name>_act/checkpoints/last/pretrained_model`.
+
+## 4. Run the policy on the robot
+
+`LeRobotPolicyModule` wraps a checkpoint as a DimOS module: camera frames and joint states in, joint commands out, at the policy's control rate. It never moves hardware at startup - its `execute_learned_policy` skill starts inference explicitly, and `stop_learned_policy` halts it with the robot holding position.
+
+On the [Galaxea A1Z](/platforms/arms/a1z) it is one command:
+
+```bash
+uv run dimos a1z run-policy \
+  outputs/a1z_act/checkpoints/last/pretrained_model \
+  --task "pick up the object" \
+  --duration 20
+```
+
+Loading and hardware initialization ask for confirmation, and inference starts only once live camera and joint observations are flowing. To run several trained behaviors behind a language agent, see the [multi-policy agent blueprint](/platforms/arms/a1z#turn-trained-policies-into-an-agentic-robot).
+
+For other arms, compose `LeRobotPolicyModule` into a blueprint next to a camera and the coordinator.
+
 <Note>
-**Status, honestly:** DimOS ships collection and dataset export today. Training runs in LeRobot outside of DimOS, and the path for deploying a trained policy back onto a DimOS-controlled arm is under active development - expect this section to grow. Until then, treat the exported dataset as the stable interface.
+**Status:** collection and dataset export work on every supported arm. Running a trained checkpoint back on hardware ships today on the A1Z; for other arms, compose `LeRobotPolicyModule` yourself. Training runs in LeRobot outside of DimOS. The exported dataset remains the stable interface between the two halves.
 </Note>
 
 ## Notes

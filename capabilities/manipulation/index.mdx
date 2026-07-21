@@ -7,7 +7,7 @@ DimOS manipulation is three things:
 
 1. **Classical motion planning** - a Drake-backed world model with RRT-Connect planning and Pink IK, driven through the `ManipulationModule` RPC interface (RoboPlan available as an alternative backend).
 2. **Teleoperation** - three ways to move an arm by hand: zero-gravity teach mode, VR (Quest), and keyboard.
-3. **An imitation-learning loop** - record demonstrations, export a LeRobot dataset, train a policy. Collection and export ship today; see [Collect data & train a policy](/capabilities/manipulation/collect-and-train) for exactly where the loop currently ends.
+3. **An imitation-learning loop** - record demonstrations, export a LeRobot dataset, train a policy, and run it back on the arm. Collection and export ship on every arm; running a trained checkpoint on hardware ships today on the [Galaxea A1Z](/platforms/arms/a1z). See [Collect data & train a policy](/capabilities/manipulation/collect-and-train) for the full loop, or the [complete A1Z guide](/platforms/arms/a1z) for the hand-teach → train → deploy path start to finish.
 
 ## Where do you want to start?
 

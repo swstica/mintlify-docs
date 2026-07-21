@@ -1,37 +1,66 @@
 ---
 title: "Galaxea A1Z"
-description: "Bring-up, teach mode, replay, and LeRobot export for the Galaxea A1Z 6-DOF arm with G1Z gripper"
+description: "The complete A1Z guide: bring-up on macOS and Linux, teach mode, replay, LeRobot export, ACT training, running checkpoints, and a multi-policy agent"
 ---
 
 ![Galaxea A1Z](/platforms/arms/assets/a1z.png)
 
-The Galaxea A1Z is a 6-DOF CAN-bus arm with the G1Z gripper (CAN motor 7). DimOS drives it over native Linux SocketCAN using the vendor's 250 Hz MIT position-control loop, with gravity compensation from the G1Z URDF. It is the teach-and-learn platform: drag the arm through a task in zero-gravity teach mode, record episodes with camera, and export straight to a LeRobot dataset.
+The Galaxea A1Z is a 6-DOF CAN-bus arm with the G1Z gripper (CAN motor 7). DimOS drives it over native Linux SocketCAN using the vendor's 250 Hz MIT position-control loop, with gravity compensation from the G1Z URDF. It is the teach-and-learn platform: drag the arm through a task in zero-gravity teach mode, record episodes with camera, export straight to a LeRobot dataset, train a policy, and run that policy back on the arm — optionally behind a language agent.
+
+This page is the authoritative, end-to-end A1Z reference. If you only need the higher-level demonstration → dataset → training → deployment story across all arms, read [the learning loop](/capabilities/manipulation/collect-and-train) instead.
 
 <Warning>
-The A1Z has **no brakes and no e-stop button** - only the PSU power switch. When motors disable, the arm goes limp and falls. Support the arm and keep the workspace clear before starting any hardware blueprint. Never leave it energized unattended.
+The A1Z has **no brakes and no e-stop button** - only the PSU power switch. When motors disable, the arm goes limp and falls. Support the arm and keep the workspace clear before starting any hardware blueprint. Enabling the G1Z also initializes the gripper. Never leave it energized unattended.
 </Warning>
 
 ## Host setup
 
-One command, run as your normal user:
+The G1Z requires the vendor SDK's `gripper` branch - vendor `main` does not accept `with_gripper` and cannot actuate CAN motor 7. The one-command setup pins the correct SDK for you.
+
+Run it as your normal user. On both platforms it installs the pinned vendor SDK from the locked `galaxea-a1z` dependency group; on macOS it also installs the PyUSB/gs-usb transport and Homebrew `libusb`. Linux then configures SocketCAN; macOS verifies the attached HHS adapter without enabling the arm:
 
 ```bash
 ./dimos/robot/manipulators/galaxea_a1z/scripts/setup_a1z.sh
 ```
 
-This installs the vendor SDK (the pinned `gripper`-branch commit - vendor `main` cannot actuate the G1Z gripper), binds the HHS USB-CANFD adapter to the kernel driver, configures the stable `a1zcan` SocketCAN interface, and verifies transmission. It asks for `sudo` only for the CAN portion. Use `--sdk-only` to install or verify the Python SDK without touching CAN.
+Two flags extend it:
 
-After a reboot or replugging the adapter, rerun the CAN portion directly:
+```bash
+# also install the dataset, training, and live-policy runtime (LeRobot)
+./dimos/robot/manipulators/galaxea_a1z/scripts/setup_a1z.sh --with-lerobot
+
+# sync and verify Python deps only - do not check or configure CAN hardware
+./dimos/robot/manipulators/galaxea_a1z/scripts/setup_a1z.sh --sdk-only
+```
+
+The equivalent manual dependency sync is:
+
+```bash
+uv sync --locked --inexact \
+  --group galaxea-a1z \
+  --extra learning \
+  --extra lerobot
+```
+
+Always include `--group galaxea-a1z` in later exact syncs, or just rerun the setup script. That group keeps the non-PyPI vendor SDK and the macOS transport pinned inside `uv.lock`, so no manual `uv pip install` step is ever needed.
+
+### CAN bring-up (Linux)
+
+DimOS deliberately has **no Linux userspace-CAN fallback**. After a boot or after reconnecting the HHS adapter, rerun the full setup script, or invoke the CAN portion directly. It binds the adapter to the kernel driver, configures the stable `a1zcan` SocketCAN interface, and verifies transmission (it asks for `sudo` only for this part):
 
 ```bash
 sudo ./dimos/robot/manipulators/galaxea_a1z/scripts/setup_a1z_can.sh
 ```
 
 <Warning>
-Do not start DimOS unless the script prints `A1Z CAN setup passed`. Some Linux kernels have a broken `gs_usb` driver for this adapter: the CAN interface comes up looking normal but silently drops every transmission. The setup script detects that state and prints your options. Galaxea recommends kernel 6.8.0-124 or newer; pinned-kernel hosts (e.g. Jetsons) need a driver patch for their exact kernel.
+Do not start DimOS unless the script prints `A1Z CAN setup passed`. Galaxea's HHS USB-CANFD adapter is incompatible with the `gs_usb` driver in some Linux kernels: the interface comes up looking normal and `UP`, but silently drops every transmission. The setup script detects that misleading state and prints your supported-kernel and exact-kernel patch options. Galaxea recommends kernel 6.8.0-124 or newer; Jetsons and other pinned-kernel hosts need a persistent driver patch built for their exact kernel.
 </Warning>
 
 Known hardware quirk: the HHS adapter can wedge its RX queue after a crashed session. If the bus behaves strangely after a crash, physically replug the adapter and rerun the CAN check.
+
+### Camera access (macOS)
+
+The teach command uses a standard UVC camera through DimOS's generic `Webcam` and `CameraModule`. On Linux, index N normally maps to `/dev/videoN`. On macOS, grant the terminal application Camera access in **System Settings → Privacy & Security → Camera**, then select the AVFoundation device with `--camera-index N`. Use the index reported by **OpenCV, not `ffmpeg`** - their AVFoundation device ordering can differ.
 
 ## Run the arm
 
@@ -51,9 +80,23 @@ Teach mode puts the arm in gravity-compensated zero-force mode: you drag it thro
 uv run dimos a1z teach --task "pick up the object"
 ```
 
-The camera defaults to `/dev/video0` (any Linux UVC camera); select another with `--camera-index N`. The `--task` text is stored with the episodes - write a real task description, since downstream language-conditioned policies train on it. Keep yourself out of the camera frame while dragging.
+The `--task` text is stored with the episodes - write a real task description, since downstream language-conditioned policies train on it. Keep yourself out of the camera frame while dragging.
 
-The command prints the path of the recording database, an ordinary memory2 `.db` file under `~/.local/state/dimos/recordings/`.
+Select the camera with `--camera-index N` (see [camera access on macOS](#camera-access-macos) above). On a Mac where OpenCV enumerates an external camera as index 0:
+
+```bash
+uv run --no-sync dimos a1z teach --camera-index 0 --task "pick up the object"
+```
+
+While recording:
+
+| Key | Action |
+|-----|--------|
+| `SPACE` | Save the current episode |
+| `g` | Toggle the gripper |
+| `d` | Discard the episode in progress |
+
+Pressing `d` while idle discards the most recently saved episode - replay and dataset export then exclude it. The command prints the Memory2 `.db` path under `~/.local/state/dimos/recordings/`.
 
 ## Replay an episode
 
@@ -61,7 +104,7 @@ The command prints the path of the recording database, an ordinary memory2 `.db`
 uv run dimos a1z replay ~/.local/state/dimos/recordings/a1z_teach_<timestamp>.db
 ```
 
-The latest saved episode plays by default; pick one with `--episode` and adjust speed with `--speed`. The arm physically re-executes the taught motion - same safety rules as any motion command.
+The latest saved episode plays by default; pick one with `--episode` and adjust speed with `--speed`. The arm physically re-executes the taught motion - same safety rules as any motion command. Replaying is the fastest way to confirm a recording captured what you demonstrated before you spend time on datasets and training.
 
 ## Export to a LeRobot dataset
 
@@ -77,10 +120,128 @@ uv run dimos dataprep build \
 uv run dimos dataprep inspect ./a1z_lerobot_dataset
 ```
 
-The output stores images as `observation.images.image`, measured arm and gripper state as `observation.state`, and the next measured state as `action` - ready for imitation-learning training. See [Collect data & train a policy](/capabilities/manipulation/collect-and-train) for the full loop.
+The output stores images as `observation.images.image`, the measured arm and gripper state as `observation.state`, and the next measured state as `action` - ready for imitation-learning training. For the config fields and the general demonstration → dataset story, see [the learning loop](/capabilities/manipulation/collect-and-train).
+
+## Train an ACT policy
+
+Install (or verify) the complete locked training runtime, then train:
+
+```bash
+./dimos/robot/manipulators/galaxea_a1z/scripts/setup_a1z.sh --sdk-only --with-lerobot
+```
+
+```bash
+uv run lerobot-train \
+  --dataset.repo_id=galaxea_a1z \
+  --dataset.root=./a1z_lerobot_dataset \
+  --policy.type=act \
+  --policy.device=mps \
+  --policy.push_to_hub=false \
+  --output_dir=outputs/a1z_act \
+  --job_name=a1z_act \
+  --wandb.enable=false
+```
+
+Use `--policy.device=cuda` on an NVIDIA training host, `mps` on Apple silicon, or `cpu` for a slow smoke test. The checkpoint lands at `outputs/a1z_act/checkpoints/last/pretrained_model`.
+
+<Note>
+ACT is the tested A1Z policy type, but the runtime uses LeRobot's policy factory rather than hard-coding ACT. Another LeRobot policy type works as long as its checkpoint exposes the same single RGB image input, seven-value state input, and seven-value action output.
+</Note>
+
+## Run a trained checkpoint
+
+After host setup passes, run the trained policy on hardware:
+
+```bash
+uv run dimos a1z run-policy \
+  outputs/a1z_act/checkpoints/last/pretrained_model \
+  --camera-index 0 \
+  --device mps \
+  --task "pick up the object" \
+  --duration 20
+```
+
+This is the one-checkpoint hardware test path. Loading and hardware initialization require confirmation, and inference starts only after live RGB and seven-joint observations are ready. Under the hood it installs the checkpoint in the policy catalog under the name `default`, starts the same camera/coordinator/policy module stack a full blueprint uses, and invokes `execute_learned_policy("default")`.
+
+## Turn trained policies into an agentic robot
+
+Once individual checkpoints pass `run-policy`, put them in one catalog and give each behavior a stable, meaningful skill name. Checkpoints load on first use and are cached, so one running robot can execute several trained behaviors without restarting. The complete blueprint stays small:
+
+```python
+from dimos.agents.annotation import skill
+from dimos.agents.capabilities import CAP_MOVEMENT
+from dimos.agents.mcp.mcp_client import McpClient
+from dimos.agents.mcp.mcp_server import McpServer
+from dimos.core.coordination.blueprints import autoconnect
+from dimos.learning.lerobot_policy import LeRobotPolicyConfig, LeRobotPolicyModule
+from dimos.robot.manipulators.galaxea_a1z.blueprints.basic import (
+    make_a1z_learned_policy_blueprint,
+)
+
+
+class HackathonPolicies(LeRobotPolicyModule):
+    @skill(uses=[CAP_MOVEMENT], lifecycle="background")
+    def pick_up_cup(self) -> str:
+        """Pick up the wooden cup from the table."""
+        return self.start_configured_policy("pick_up_cup", tool_name="pick_up_cup")
+
+    @skill(uses=[CAP_MOVEMENT], lifecycle="background")
+    def place_cup(self) -> str:
+        """Place the held wooden cup on the table."""
+        return self.start_configured_policy("place_cup", tool_name="place_cup")
+
+
+a1z_policies = make_a1z_learned_policy_blueprint(
+    policies={
+        "pick_up_cup": LeRobotPolicyConfig(
+            policy_path="outputs/pick_up_cup/checkpoints/last/pretrained_model",
+            task="pick up the wooden cup",
+            device="mps",
+            default_duration=20.0,
+        ),
+        "place_cup": LeRobotPolicyConfig(
+            policy_path="outputs/place_cup/checkpoints/last/pretrained_model",
+            task="place the wooden cup on the table",
+            device="mps",
+            default_duration=20.0,
+        ),
+    },
+    policy_module=HackathonPolicies,
+    camera_index=0,
+)
+
+A1Z_AGENT_PROMPT = """You control a Galaxea A1Z manipulation arm.
+Use the available learned manipulation skills to carry out the user's request.
+Call only one movement skill at a time and report failures clearly.
+"""
+
+a1z_learned_agent = autoconnect(
+    a1z_policies,
+    McpServer.blueprint(),
+    McpClient.blueprint(system_prompt=A1Z_AGENT_PROMPT),
+)
+```
+
+Expose `a1z_learned_agent` as a runnable blueprint through the normal DimOS blueprint registration process, then start it like any other stack:
+
+```bash
+uv run dimos run a1z-learned-agent --daemon
+uv run dimos humancli
+```
+
+The same running blueprint can be driven without the interactive terminal:
+
+```bash
+uv run dimos agent-send "pick up the wooden cup, then place it back down"
+uv run dimos mcp list-tools
+uv run dimos mcp call pick_up_cup
+```
+
+The composition is standard DimOS: the A1Z helper supplies the hardware, servo coordinator, camera, and one multi-policy module; `McpServer` exposes the named skills; and `McpClient` lets the language agent select and sequence them. Adding a trained behavior means adding one catalog entry and one small `@skill` wrapper - no new executor module, no changes to DimOS core.
 
 ## If something goes wrong
 
 - **Kill switch:** cut motor power from software with the motors-off helper (`a1z_scripts/motors_off.py` on the integration branch), or use the PSU switch. Support the arm first - it will fall.
 - **Gripper stays energized after shutdown:** the vendor protocol sends the gripper-disable frame only once and it can be lost. The DimOS adapter retries this automatically; if the gripper is still stiff, use the kill switch.
 - **CAN interface up but nothing responds:** the broken-`gs_usb` kernel case above. Rerun `setup_a1z_can.sh` and read its output.
+- **Policy behaving strangely:** work backwards through the loop. Run `dimos dataprep inspect` to check shapes and episode counts, and `dimos a1z replay` to check the recorded motion looks like what you demonstrated. A bad policy is usually a dataset problem; a dataset problem is usually a recording problem.

@@ -1,6 +1,9 @@
 ---
 title: "Record & replay"
+description: "Record robot sessions to a SQLite store with memory2, then inspect and query them"
 ---
+
+This guide covers the **memory2 episode store**: recording a robot session to SQLite (for example with `dimos --replay --replay-db go2_bigoffice run unitree-go2-memory`) and inspecting what was recorded. For the live place memory that powers language navigation, see [Memory](/capabilities/memory).
 
 <details>
 <summary>Python</summary>
@@ -29,10 +32,10 @@ for name, stream in store.streams.items():
 ```
 
 ```results
-Stream("color_image"): 4164 items, 2025-12-26 11:09:08 — 2025-12-26 11:14:00 (292.5s)
-Stream("color_image_embedded"): 267 items, 2025-12-26 11:09:12 — 2025-12-26 11:14:00 (288.4s)
-Stream("lidar"): 2251 items, 2025-12-26 11:09:08 — 2025-12-26 11:14:00 (292.3s)
-Stream("odom"): 5465 items, 2025-12-26 11:09:08 — 2025-12-26 11:14:00 (292.5s)
+Stream("color_image"): 4164 items, 2025-12-26 11:09:08 - 2025-12-26 11:14:00 (292.5s)
+Stream("color_image_embedded"): 267 items, 2025-12-26 11:09:12 - 2025-12-26 11:14:00 (288.4s)
+Stream("lidar"): 2251 items, 2025-12-26 11:09:08 - 2025-12-26 11:14:00 (292.3s)
+Stream("odom"): 5465 items, 2025-12-26 11:09:08 - 2025-12-26 11:14:00 (292.5s)
 ```
 
 Any stream is drawable

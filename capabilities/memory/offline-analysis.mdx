@@ -1,7 +1,9 @@
 ---
 title: "Offline analysis"
+description: "Notebook-style analysis of recorded memory2 data: plotting, semantic search, mosaics"
 ---
 
+This page is offline analysis of **recorded** data with the memory2 plotting and search APIs. It is not live robot memory - for that, see [Memory](/capabilities/memory).
 
 ## color cycle
 
@@ -142,7 +144,7 @@ plot.to_svg("assets/plot_plantness.svg")
 ```results
 Stream("color_image_embedded") | vector_search() | order_by(ts)
 Stream("materialize")
-Stream("materialize"): 267 items, 2025-12-26 11:09:12 — 2025-12-26 11:14:00 (288.4s)
+Stream("materialize"): 267 items, 2025-12-26 11:09:12 - 2025-12-26 11:14:00 (288.4s)
 ```
 
 ![output](/capabilities/memory/assets/plot_plantness.svg)
@@ -271,7 +273,7 @@ t= 279.6s score=0.230 prominence=0.030
 
 ## Which peaks are significant?
 
-We got 15 peaks back, we ran a detector on all of them so we can start projecting into 3D but let's say we want some sort of pre-filter of just globally significant peaks. we can see most peaks prominence sits around 0.02–0.03 and only a couple (0.067 at t=37s, 0.047 at t=240s) really stand out. We might want to auto detect those.
+We got 15 peaks back, we ran a detector on all of them so we can start projecting into 3D but let's say we want some sort of pre-filter of just globally significant peaks. we can see most peaks prominence sits around 0.02-0.03 and only a couple (0.067 at t=37s, 0.047 at t=240s) really stand out. We might want to auto detect those.
 
 `significant()` replaces that guesswork by thresholding on the distribution of prominences itself. Default outlier detection uses MAD (median absolute deviation)
 

@@ -1,7 +1,7 @@
 ---
 title: "OpenArm Integration"
 ---
-Guide for running the **OpenArm** — an open-source bimanual 7-DOF research arm built from Damiao DM-J quasi-direct-drive motors — under the dimos manipulation + control stack.
+Guide for running the **OpenArm** - an open-source bimanual 7-DOF research arm built from Damiao DM-J quasi-direct-drive motors - under the dimos manipulation + control stack.
 
 **If you're standing in front of the hardware and just want to run it, skip to [Quick start](#quick-start).**
 
@@ -23,7 +23,7 @@ Every other arm in dimos wraps a vendor Python SDK:
 | Go2 / G1 | WebRTC | Unitree SDK |
 | Panda | FCI | `panda-py` |
 
-**OpenArm ships no Python SDK.** The only interface is raw CAN frames on the wire, speaking the Damiao MIT-mode protocol. So dimos includes a from-scratch driver that encodes/decodes the protocol directly on a SocketCAN bus. The reference implementation is the Enactic C++ library at [enactic/openarm_can](https://github.com/enactic/openarm_can) — we port the frame layout from there.
+**OpenArm ships no Python SDK.** The only interface is raw CAN frames on the wire, speaking the Damiao MIT-mode protocol. So dimos includes a from-scratch driver that encodes/decodes the protocol directly on a SocketCAN bus. The reference implementation is the Enactic C++ library at [enactic/openarm_can](https://github.com/enactic/openarm_can) - we port the frame layout from there.
 
 ## Architecture
 
@@ -36,8 +36,8 @@ Code layout:
 
 ```
 dimos/hardware/manipulators/openarm/
-├── driver.py          # OpenArmBus, DamiaoMotor — pure CAN driver, no dimos deps
-├── adapter.py         # OpenArmAdapter — implements dimos ManipulatorAdapter protocol
+├── driver.py          # OpenArmBus, DamiaoMotor - pure CAN driver, no dimos deps
+├── adapter.py         # OpenArmAdapter - implements dimos ManipulatorAdapter protocol
 ├── test_driver.py     # 13 unit tests (virtual CAN loopback, no hardware)
 └── test_adapter.py    # 11 unit tests (virtual CAN + mock state frames)
 
@@ -57,7 +57,7 @@ data/openarm_description/          # URDF + meshes (in-tree; may migrate to LFS)
     └── openarm_v10_single.urdf    # standalone arm (Pinocchio FK for teleop)
 ```
 
-Workspace analysis is generic and lives in [dimos/utils/workspace.py](/dimos/utils/workspace.py) — works for any URDF, not just OpenArm.
+Workspace analysis is generic and lives in [dimos/utils/workspace.py](/dimos/utils/workspace.py) - works for any URDF, not just OpenArm.
 
 ---
 
@@ -90,11 +90,11 @@ python ./dimos/robot/manipulators/openarm/scripts/openarm_can_probe.py --channel
 python ./dimos/robot/manipulators/openarm/scripts/openarm_can_probe.py --channel can1
 ```
 
-Expected: `8/8 motors replied` on each bus, with plausible joint positions and rotor temps around 25–30 °C.
+Expected: `8/8 motors replied` on each bus, with plausible joint positions and rotor temps around 25-30 °C.
 
 ### 3. (First time only) Put motors in MIT mode
 
-Damiao motors have a persistent `CTRL_MODE` register. They ship in POS_VEL mode by default, which means they will reply to enable/state queries but **silently ignore** any MIT control frames — the "motor doesn't move, error grows" failure. The adapter writes MIT on every `connect()` by default, so this step is usually automatic. If you want to set it explicitly once:
+Damiao motors have a persistent `CTRL_MODE` register. They ship in POS_VEL mode by default, which means they will reply to enable/state queries but **silently ignore** any MIT control frames - the "motor doesn't move, error grows" failure. The adapter writes MIT on every `connect()` by default, so this step is usually automatic. If you want to set it explicitly once:
 
 ```bash
 python ./dimos/robot/manipulators/openarm/scripts/openarm_set_mit_mode.py --channel can0
@@ -111,10 +111,10 @@ The register is persistent across power cycles, so you only need this once per m
 | `openarm-mock-planner-coordinator` | Drake planner + bimanual mock, Meshcat viz. Great smoke test. |
 | `coordinator-openarm-left` / `coordinator-openarm-right` | Single arm, real hardware on can0 / can1. |
 | `coordinator-openarm-bimanual` | Both arms, real hardware, no planner. |
-| `openarm-planner-coordinator` | **Main usable blueprint** — Drake planner + both arms on real hardware. |
+| `openarm-planner-coordinator` | **Main usable blueprint** - Drake planner + both arms on real hardware. |
 | `keyboard-teleop-openarm-mock` / `keyboard-teleop-openarm` | Single-arm Cartesian IK + pygame keyboard, mock / real. |
 
-**Safety before hot-plugging hardware:** hold the arms before starting. On connect, the adapter enables all motors and sends gravity-comp holds — the arms go slightly stiff but don't leap. Ctrl-C to cleanly disable and exit.
+**Safety before hot-plugging hardware:** hold the arms before starting. On connect, the adapter enables all motors and sends gravity-comp holds - the arms go slightly stiff but don't leap. Ctrl-C to cleanly disable and exit.
 
 First-time recommendation: mock planner to verify everything wires up, then real single-arm, then bimanual.
 
@@ -154,7 +154,7 @@ This gives you an interactive Python prompt with these functions:
 | `home(robot_name)` | Plan + execute to home joints |
 | `commands()` | Print all available functions |
 
-#### Example session — simple joint moves
+#### Example session - simple joint moves
 
 ```python skip
 >>> robots()
@@ -171,16 +171,16 @@ True
 [0.30, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00]   # arm is now at the commanded pose
 ```
 
-`plan()` returns `True` on success, `False` if planning failed (check the coordinator terminal for `COLLISION_AT_GOAL`, `INVALID_START`, `NO_SOLUTION`, etc). The `and` chaining is an idiom — if any step fails, the next one is short-circuited.
+`plan()` returns `True` on success, `False` if planning failed (check the coordinator terminal for `COLLISION_AT_GOAL`, `INVALID_START`, `NO_SOLUTION`, etc). The `and` chaining is an idiom - if any step fails, the next one is short-circuited.
 
 If you ever get stuck in a `FAULT` state (e.g. an invalid plan was sent), reset the state machine:
 
 ```python skip
 >>> _client.reset()
-'Reset to IDLE — ready for new commands'
+'Reset to IDLE - ready for new commands'
 ```
 
-#### Example session — bimanual
+#### Example session - bimanual
 
 ```python skip
 >>> # Move both arms to mirrored poses
@@ -190,9 +190,9 @@ True
 True
 ```
 
-Each arm plans and executes independently — the coordinator runs both trajectories simultaneously on separate tick-loop tasks.
+Each arm plans and executes independently - the coordinator runs both trajectories simultaneously on separate tick-loop tasks.
 
-#### Example session — Cartesian target
+#### Example session - Cartesian target
 
 ```python skip
 >>> ee(robot_name="left_arm")           # see where the EE currently is
@@ -202,7 +202,7 @@ True
 True
 ```
 
-If you don't know which Cartesian targets are reachable, check first with the workspace tool — see [Workspace analysis](#workspace-analysis) below. `plan_pose` will fail with `NO_SOLUTION` if the IK can't find a configuration reaching the target.
+If you don't know which Cartesian targets are reachable, check first with the workspace tool - see [Workspace analysis](#workspace-analysis) below. `plan_pose` will fail with `NO_SOLUTION` if the IK can't find a configuration reaching the target.
 
 #### Adding obstacles
 
@@ -240,15 +240,15 @@ _DEFAULT_KD = [1.5, 1.5, 1.0, 1.0, 0.8, 0.8, 0.8]
 Guidelines:
 - `kp ∈ [0, 500]` in MIT mode. Higher kp = stiffer position tracking; too high → oscillation.
 - `kd ∈ [0, 5]`. Higher kd = more damping, but values above ~2 on these gearboxes cause high-frequency buzz/grinding.
-- Gravity compensation is on by default (`gravity_comp=True`) — the adapter uses Pinocchio to compute `G(q)` and adds it as feedforward torque. This removes the need for very high kp to fight gravity, so prefer low kp + gravity comp over high kp.
+- Gravity compensation is on by default (`gravity_comp=True`) - the adapter uses Pinocchio to compute `G(q)` and adds it as feedforward torque. This removes the need for very high kp to fight gravity, so prefer low kp + gravity comp over high kp.
 
 ### Physical joint limits
 
-The URDFs use the xacro-generated limits (which include per-side offsets for mirroring). The adapter's `get_limits()` reports the same per-side limits. If you measure tighter physical limits and want to enforce them, edit the URDFs directly — the planner will respect them.
+The URDFs use the xacro-generated limits (which include per-side offsets for mirroring). The adapter's `get_limits()` reports the same per-side limits. If you measure tighter physical limits and want to enforce them, edit the URDFs directly - the planner will respect them.
 
 ### Disabling auto MIT-mode write
 
-The adapter writes `CTRL_MODE=MIT` to every motor at `connect()`. It's idempotent (writing the same value is a no-op), so this is safe to leave on. To verify that a previous write persisted across a power cycle, flip `AUTO_SET_MIT_MODE = False` in [config.py](/dimos/robot/manipulators/openarm/config.py) and restart — the arms should still respond.
+The adapter writes `CTRL_MODE=MIT` to every motor at `connect()`. It's idempotent (writing the same value is a no-op), so this is safe to leave on. To verify that a previous write persisted across a power cycle, flip `AUTO_SET_MIT_MODE = False` in [config.py](/dimos/robot/manipulators/openarm/config.py) and restart - the arms should still respond.
 
 ---
 
@@ -336,8 +336,8 @@ Persistent across power cycles.
 
 - **`ip link ... fd on` → `Operation not supported`.** gs_usb firmware doesn't support CAN-FD. Use classical CAN @ 1 Mbit (our bringup script's default).
 - **Motors reply to probes but commands do nothing.** CTRL_MODE is not MIT. The adapter now writes MIT on connect, but if you disabled that and motors got reset, run `openarm_set_mit_mode.py`.
-- **`COLLISION_AT_START` during planning.** `link5` and `link7` collision meshes overlap by 3 mm at every configuration. Handled by `OPENARM_COLLISION_EXCLUSIONS` in the OpenArm config module. If you see it anyway, the exclusion pairs may not be getting applied — check that the collision filter log line appears during world build.
-- **`INVALID_START` during planning.** Hardware encoder noise pushed a joint 1 mrad past a URDF limit. Joint4 used to be exactly `lower=0.0` which tripped this — it's now `-0.01` to give breathing room. If you see it on a different joint, widen that limit by ~10 mrad.
+- **`COLLISION_AT_START` during planning.** `link5` and `link7` collision meshes overlap by 3 mm at every configuration. Handled by `OPENARM_COLLISION_EXCLUSIONS` in the OpenArm config module. If you see it anyway, the exclusion pairs may not be getting applied - check that the collision filter log line appears during world build.
+- **`INVALID_START` during planning.** Hardware encoder noise pushed a joint 1 mrad past a URDF limit. Joint4 used to be exactly `lower=0.0` which tripped this - it's now `-0.01` to give breathing room. If you see it on a different joint, widen that limit by ~10 mrad.
 - **"Transmit buffer full" (ENOBUFS) at 100 Hz.** Kernel TX queue too small. The bringup script sets `txqueuelen 1000`; the driver also retries on ENOBUFS. If you still see the error, check `ip -details link show canX | grep qlen`.
 - **Arms swap sides.** USB enumeration order flipped. Swap `LEFT_CAN` / `RIGHT_CAN` in [config.py](/dimos/robot/manipulators/openarm/config.py).
 
@@ -350,7 +350,7 @@ Persistent across power cycles.
 - **Gravity compensation on by default.** Eliminates steady-state position error without needing high kp. Needs Pinocchio + the per-side URDFs.
 - **One adapter per CAN bus, keyed by `address`.** Matches the Piper adapter pattern. Bimanual = two adapters with different `address` values.
 - **Per-side URDFs for Drake planning.** Loading the full 14-DOF bimanual URDF twice (once per robot instance) creates phantom-arm collisions with the "other" arm frozen at zero. The per-side URDFs keep only one arm's links + the torso, avoiding the phantom collisions while matching the bimanual kinematics exactly.
-- **URDF stays in-tree (`data/openarm_description/`) for now.** Can migrate to LFS later — only the path constants in the OpenArm blueprint module change.
+- **URDF stays in-tree (`data/openarm_description/`) for now.** Can migrate to LFS later - only the path constants in the OpenArm blueprint module change.
 - **CAN bringup stays manual (`sudo`).** Auto-bringup from `connect()` would need sudo-in-a-library or a systemd unit; the explicit script is clearer and testable. For production, add a oneshot systemd unit that runs the script at boot.
 
 ---
@@ -384,4 +384,4 @@ Points are colored by Yoshikawa manipulability index: green = dexterous, red = n
 .venv/bin/python -m pytest dimos/hardware/manipulators/openarm/ -v
 ```
 
-Expected: 24 passed (13 driver + 11 adapter). All tests use `can.Bus(interface="virtual")` loopback — no real hardware needed.
+Expected: 24 passed (13 driver + 11 adapter). All tests use `can.Bus(interface="virtual")` loopback - no real hardware needed.

@@ -1,129 +1,135 @@
 ---
 title: "Quickstart"
-description: "Install DimOS, run a replay or simulation, then explore CLI and MCP. No hardware required."
+description: "Install DimOS, replay a robot session with no hardware, then talk to the robot through an LLM agent."
 ---
 
-In this quickstart, you will be able to replay a Unitree Go2 office navigation session with no hardware, switch to simulation or a live robot.
+In fifteen minutes you will: install DimOS, replay a recorded Unitree Go2 session in the Rerun viewer with no hardware, and then drive an agentic stack with natural language. Everything on this page runs on a laptop.
 
-If you use coding agents (OpenClaw, Claude Code or similar), point them at [`AGENTS.md`](/AGENTS.md).
+If you use coding agents (Claude Code, OpenClaw, or similar), point them at [`AGENTS.md`](https://github.com/dimensionalOS/dimos/blob/main/AGENTS.md) in the repo.
 
 ## System requirements
 
 | Component | Minimum | Recommended |
 | --- | --- | --- |
 | OS | Ubuntu 22.04, macOS 12.6+ | Ubuntu 24.04 |
-| Python | 3.12 | Latest |
+| Python | 3.10 | 3.12 |
 | RAM | 16 GB | 32 GB+ |
 | Disk | 10 GB SSD | 25 GB+ SSD |
 | CPU | 8-core Intel / AMD | 12+ cores |
 | GPU (optional) | NVIDIA RTX 3000+ (8 GB VRAM) | RTX 4070+ (12 GB+ VRAM) |
 
-> GPU is required only for perception, VLMs, and AI features. Optional for basic robot control.
+> GPU is required only for perception, VLMs, and AI features. Optional for basic robot control and everything on this page.
 
-## Interactive install
+## Step 1: Install
 
-```bash
-curl -fsSL https://raw.githubusercontent.com/dimensionalOS/dimos/main/scripts/install.sh | bash
-```
-
-## Manual system install
-
-If you prefer to install system dependencies yourself, follow the guide for your OS:
-
-| OS Guide | Notes |
-| --- | --- |
-| <Icon icon="ubuntu" iconType="brands" size={18} />  [Ubuntu](/installation/ubuntu) | Primary tested path |
-| <Icon icon="snowflake" iconType="solid" size={18} /> [Nix](/installation/nix) | Flakes and dev shell |
-| <Icon icon="apple" iconType="brands" size={18} /> [macOS](/installation/osx) | Homebrew-based; less mature than Linux |
-
-## Python environment
-
-DimOS targets Python 3.12. The examples use [`uv`](https://docs.astral.sh/uv/); plain `python -m venv` and `pip` work too.
+DimOS supports Python 3.10 to 3.12 and targets 3.12. The examples use [`uv`](https://docs.astral.sh/uv/); plain `python -m venv` and `pip` work too.
 
 ```bash
-uv venv --python "3.12"
-source .venv/bin/activate   # Windows: .venv\Scripts\activate
-```
-
-## Install DimOS
-
-```bash
+uv venv --python 3.12
+source .venv/bin/activate
 uv pip install 'dimos[base,unitree]'
 ```
 
-Extras keep installs lean: `base` is runtime, modules, transports, and CLI; `unitree` adds WebRTC and skills for Go2 / G1 (real or replayed).
+Extras keep installs lean: `base` is the runtime, modules, transports, and CLI; `unitree` adds WebRTC and skills for Go2 / G1 (real or replayed).
 
-### Replay a recorded session (no hardware)
+<Accordion title="Other install options">
+  One-command interactive install (system deps + Python env):
 
-On first run, the Rerun window may stay black briefly while roughly **75 MB** of data downloads from LFS.
+  ```bash
+  curl -fsSL https://raw.githubusercontent.com/dimensionalOS/dimos/main/scripts/install.sh | bash
+  ```
+
+  Or install system dependencies yourself with the guide for your OS: [Ubuntu](/installation/ubuntu) (primary tested path), [Nix](/installation/nix) (flakes and dev shell), [macOS](/installation/osx) (Homebrew-based, less mature than Linux).
+</Accordion>
+
+## Step 2: Replay a recorded session (no hardware)
 
 ```bash
 dimos --replay run unitree-go2
 ```
 
-### Simulation (MuJoCo)
+A Rerun viewer window opens showing the robot's camera, the live-built map, and the planned paths from a recorded office navigation session, with SLAM, costmap, and A-star planning running for real against the recorded sensors. On first run the window may stay black briefly while roughly **75 MB** of recorded data downloads.
+
+While it runs, try the ops commands from a second terminal:
 
 ```bash
-uv pip install 'dimos[base,unitree,sim]'
-dimos --simulation run unitree-go2
-dimos --simulation run unitree-g1-sim   # humanoid
+dimos status      # what is running
+dimos log -f      # follow logs
+dimos stop        # shut the stack down
 ```
 
-### Real robot (example: Unitree Go2 over WebRTC)
+## Step 3: Talk to the robot
+
+Agentic blueprints add an LLM agent that controls the robot by calling skills. The default model is `gpt-4o`, so set your API key first (or see the local-LLM variant below):
+
+```bash
+export OPENAI_API_KEY=sk-...
+dimos --simulation run unitree-go2-agentic
+```
+
+Then, from a second terminal:
+
+```bash
+dimos agent-send "walk forward one meter, then say hello"
+dimos log -f
+```
+
+There is also a web chat with voice input at `http://localhost:5555`.
+
+The agent's tools are ordinary MCP skills, and you can call them yourself with no LLM in the loop:
+
+```bash
+dimos mcp list-tools
+dimos mcp call relative_move --arg forward=0.5
+```
+
+No OpenAI key? Run the same stack against a local model with [Ollama](https://ollama.com) (`ollama serve` must be running):
+
+```bash
+dimos --simulation run unitree-go2-agentic-ollama
+```
+
+How this works, and how to add your own skills: [Agents](/agents).
+
+## Step 4: Real robot
+
+For a physical Unitree Go2 over WebRTC:
 
 ```bash
 export ROBOT_IP=<YOUR_ROBOT_IP>
 dimos run unitree-go2
 ```
 
-Do not skip the platform guide - latency, time sync, and safety habits matter: [Unitree Go2](/platforms/quadruped/go2/index).
+Do not skip the platform guide - network setup, latency, and safety habits matter: [Unitree Go2](/platforms/quadruped/go2/index). For other hardware, see [Platforms](/platforms/quadruped/go2/index) in the sidebar, including the [Galaxea A1Z arm](/platforms/arms/a1z).
 
-
-## Featured runfiles
+## More things to run
 
 | Command | What it does |
 | --- | --- |
-| `dimos --replay run unitree-go2` | Quadruped navigation replay - SLAM, costmap, A-star planning |
-| `dimos --replay --replay-db go2_bigoffice run unitree-go2-memory` | Quadruped temporal memory replay |
-| `dimos --simulation run unitree-go2-agentic` | Quadruped agentic + MCP server in simulation |
+| `dimos --replay run unitree-go2` | Quadruped navigation replay: SLAM, costmap, A-star planning |
+| `dimos --replay --replay-db go2_bigoffice run unitree-go2-memory` | Replay a long session while recording it into a queryable SQLite store ([memory2](/capabilities/memory)) |
+| `dimos --simulation run unitree-go2-agentic` | Quadruped agent + MCP server in simulation |
 | `dimos --simulation run unitree-g1-sim` | Humanoid in MuJoCo simulation |
 | `dimos --replay run drone-basic` | Drone video + telemetry replay |
 | `dimos --replay run drone-agentic` | Drone + LLM agent with flight skills (replay) |
-| `dimos run demo-camera` | Webcam demo - no hardware needed |
-| `dimos run keyboard-teleop-xarm7` | Keyboard teleop with mock xArm7 (`dimos[manipulation]` extra) |
-| `dimos --simulation run unitree-go2-agentic-ollama` | Quadruped agentic with local LLM (Ollama running, `ollama serve`) |
+| `dimos run demo-camera` | Webcam demo, no robot needed |
+| `dimos run keyboard-teleop-xarm7` | Keyboard teleop with a mock xArm7 (`dimos[manipulation]` extra) |
 
-Blueprint reference: [Blueprints](/usage/blueprints).
-
-## Agent CLI and MCP
-
-The `dimos` CLI runs blueprints, inspects state, talks to agents, and invokes skills via MCP.
-
-```bash
-dimos run unitree-go2-agentic --daemon   # background
-dimos status
-dimos log -f
-dimos agent-send "explore the room"
-dimos mcp list-tools
-dimos mcp call relative_move --arg forward=0.5
-dimos stop
-```
-
-Full reference: [CLI](/usage/cli).
+`dimos list` prints every available blueprint. Blueprint reference: [Blueprints](/usage/blueprints).
 
 ## What next?
 
 <CardGroup cols={2}>
-  <Card title="Add an LLM agent" icon="robot">
-    Natural language control and MCP-exposed skills.
+  <Card title="How DimOS fits together" icon="diagram-project" href="/usage/how-dimos-fits-together">
+    The mental model: modules, streams, and blueprints behind every workflow.
   </Card>
-  <Card title="Pick your platform" icon="microchip">
-    Hardware support matrix and bring-up guides.
+  <Card title="Agents" icon="robot" href="/agents">
+    Natural language control: skills, MCP, and how to add your own.
   </Card>
-  <Card title="Core concepts" icon="diagram-project">
-    Modules, streams, and blueprints behind every workflow.
+  <Card title="Platforms" icon="microchip" href="/platforms/quadruped/go2/index">
+    Bring-up guides: Unitree Go2, G1, and manipulator arms.
   </Card>
-  <Card title="Capabilities" icon="bolt">
-    Navigation, perception, spatial memory, and manipulation.
+  <Card title="Memory" icon="database" href="/capabilities/memory">
+    The three memory systems and what each is for.
   </Card>
 </CardGroup>

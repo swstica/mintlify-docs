@@ -4,7 +4,7 @@ title: "Embeddings"
 
 ## Core Principle: Enrichment, Not Replacement
 
-The embedding annotates the observation — it doesn't replace `.data`.
+The embedding annotates the observation - it doesn't replace `.data`.
 In memory1, `.data` IS the embedding and you need `parent_id` + `project_to()` to get back to the source image. We avoid this entirely.
 
 ## Observation Types
@@ -25,7 +25,7 @@ class EmbeddedObservation(Observation[T]):
     similarity: float | None = None          # populated by .search()
 ```
 
-`EmbeddedObservation` is a subclass — passes anywhere `Observation` is accepted (LSP).
+`EmbeddedObservation` is a subclass - passes anywhere `Observation` is accepted (LSP).
 Users who don't care about types just use `Observation`. Users who want precision annotate with `EmbeddedObservation`.
 
 `derive()` on `Observation` promotes to `EmbeddedObservation` if `embedding=` is passed.
@@ -33,7 +33,7 @@ Users who don't care about types just use `Observation`. Users who want precisio
 
 ## Embed Transformer
 
-`Embed` is `Transformer[T, T]` — same data type in and out. It populates `.embedding` on each observation:
+`Embed` is `Transformer[T, T]` - same data type in and out. It populates `.embedding` on each observation:
 
 ```python
 class Embed(Transformer[T, T]):
@@ -47,7 +47,7 @@ class Embed(Transformer[T, T]):
                 yield obs.derive(data=obs.data, embedding=vec)
 ```
 
-`Stream[Image]` stays `Stream[Image]` after embedding — `T` is about `.data`, not the observation subclass.
+`Stream[Image]` stays `Stream[Image]` after embedding - `T` is about `.data`, not the observation subclass.
 
 ## Search
 
@@ -117,7 +117,7 @@ results = unified.search(query_vec, k=20).to_list()
 
 **Different embedding spaces = different streams.** Can't mix CLIP and sentence-transformer vectors.
 
-## Chaining — Embedding as Cheap Pre-Filter
+## Chaining - Embedding as Cheap Pre-Filter
 
 ```python
 smoke_query = clip.embed_text("smoke or fire")
@@ -135,7 +135,7 @@ class SmartDetector(Transformer[Image, Detection]):
                 yield obs.derive(data=self.detect(obs.data))
 ```
 
-## Text Search (FTS) — Separate Concern
+## Text Search (FTS) - Separate Concern
 
 FTS is keyword-based, not embedding-based. Complementary, not competing:
 

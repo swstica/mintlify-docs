@@ -1,5 +1,73 @@
 ---
 title: "Tutorial: drive the Go2 with language"
+description: "Tag places, then send the robot back to them by name or description - live spatial memory in action"
 ---
 
-Page under construction for the hackathon docs revamp.
+This is the flagship agent demo: walk the robot around, name a place, and later say "go to the kitchen" - the robot finds it. It works because the agentic stack runs **SpatialMemory**, a live place map built while the robot moves (see [Memory](/capabilities/memory) for how it fits with the other memory systems).
+
+Works in simulation or on a real Go2. Simulation shown; for hardware, drop `--simulation` and set `ROBOT_IP` (see the [Go2 platform guide](/platforms/quadruped/go2/index)).
+
+## Start the stack
+
+```bash
+export OPENAI_API_KEY=sk-...
+dimos --simulation run unitree-go2-agentic
+```
+
+This runs the full agentic composition: the robot stack plus SpatialMemory and a perceive loop, the MCP tool bus, the LLM agent, and skill containers for movement, navigation, person following, and speech. A Rerun viewer shows what the robot sees and the map it is building.
+
+## Explore and tag
+
+Drive the robot somewhere worth remembering, then name the spot. You can do all of it in natural language from a second terminal:
+
+```bash
+dimos agent-send "walk forward two meters"
+dimos agent-send "this place is the kitchen, remember it"
+```
+
+The second command makes the agent call `tag_location("kitchen")`, which stores the robot's current pose under that name. The reply confirms the tag with coordinates.
+
+Move somewhere else and tag more places. The more the robot has driven with the perceive loop running, the richer its place map: SpatialMemory continuously embeds camera frames (CLIP) against poses, so it remembers what places *look like*, not just the spots you named.
+
+## Send it back
+
+```bash
+dimos agent-send "go to the kitchen"
+```
+
+The agent calls `navigate_with_text("kitchen")`, and the skill resolves the query in three layers:
+
+1. **Tagged locations** - exact name match on places you tagged.
+2. **Vision** - if the described thing is visible in the camera right now, navigate toward it.
+3. **Semantic map** - CLIP search over everything the robot has seen; the best-matching place becomes the goal.
+
+Layer 3 is why untagged queries also work once the robot has looked around:
+
+```bash
+dimos agent-send "go to the plant"
+```
+
+To interrupt a navigation: `dimos agent-send "stop"` (the agent calls `stop_navigation()`).
+
+## Same thing, no LLM
+
+Every step above is a skill call, so you can drive the whole demo deterministically:
+
+```bash
+dimos mcp call tag_location --arg location_name=kitchen
+dimos mcp call navigate_with_text --arg query=kitchen
+dimos mcp call stop_navigation
+```
+
+This is the right layer for debugging: if `navigate_with_text` fails here, the problem is in navigation or memory, not the agent.
+
+## What is happening underneath
+
+- `NavigationSkillContainer` holds references (`Spec`s) to the running SpatialMemory and Navigation modules. `tag_location` writes a named pose; `navigate_with_text` resolves a query to a pose and calls `set_goal` on the navigation module.
+- Navigation itself is the ordinary DimOS nav stack - the same one you can drive by [clicking in the viewer or calling `set_goal` from Python](/capabilities/navigation/using-navigation). The agent is just one more client.
+- The camera never streams into the LLM. When the agent needs to see, it calls `observe()` and gets one frame as a tool result.
+
+## Next
+
+- [Add your own skill](/agents/add-a-skill) to this stack - one line in the blueprint.
+- [Memory](/capabilities/memory) - what SpatialMemory does and does not remember.

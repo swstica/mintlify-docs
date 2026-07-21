@@ -1,5 +1,77 @@
 ---
 title: "Skills & MCP"
+description: "The @skill contract, how skills become MCP tools, and how to drive them with no LLM in the loop"
 ---
 
-Page under construction for the hackathon docs revamp.
+A skill is a method on any `Module` decorated with `@skill`. The decorator makes it an RPC method **and** publishes it as an MCP tool: the docstring and type annotations become the tool schema the LLM sees.
+
+```python
+from dimos.agents.annotation import skill
+from dimos.core.module import Module
+
+class MySkillContainer(Module):
+    @skill
+    def wave_hello(self) -> str:
+        """Wave at the nearest person."""
+        # ... robot control logic ...
+        return "Waving!"
+```
+
+## The contract
+
+- **Parameters** must be JSON-serializable primitives (`str`, `int`, `float`, `bool`, `list`, `dict`).
+- **The docstring is the tool description.** It is not documentation for humans; it is the only context the LLM has about when and how to call this skill. Write it the way you would brief an operator: what it does, when to use it, an example call.
+- **Return a string or an image.** The return value goes into the agent's conversation history and drives its next decision. "Done" is a bad return; "Moved 0.5 m forward, now facing the door" is a good one.
+- Skills live in ordinary modules, so they can hold streams, state, and `Spec` references to other modules (a navigation skill holds a reference to the navigation module and calls `set_goal` on it).
+
+## From skill to tool: the two MCP modules
+
+Every agentic blueprint includes both halves:
+
+- **`McpServer`** (`dimos/agents/mcp/mcp_server.py`) discovers every `@skill` method across all deployed modules via RPC and serves them as MCP tools over HTTP on port `9990`. Any MCP-capable client can connect - the DimOS agent, the CLI, or an external tool like Claude Code.
+- **`McpClient`** (`dimos/agents/mcp/mcp_client.py`) is the built-in LLM agent. At startup it calls `tools/list` on the server and hands the tools to the model.
+
+This split is the point: the skill surface exists independently of any LLM.
+
+## Drive skills without an LLM
+
+Prove your stack works before involving a model. With any agentic blueprint running:
+
+```bash
+dimos mcp list-tools                              # every skill, with its schema
+dimos mcp call relative_move --arg forward=0.5    # call one directly
+dimos mcp status                                  # server status
+```
+
+`--arg` takes `KEY=VALUE` pairs and JSON-decodes the values, so lists and numbers work too.
+
+If a skill misbehaves here, it will misbehave worse under an LLM. Debug at this layer first.
+
+## Built-in skills
+
+The ground truth is always `dimos mcp list-tools` on your running stack. The common ones on the Go2 agentic blueprint:
+
+| Skill | Module | Description |
+|-------|--------|-------------|
+| `relative_move(forward, left, degrees)` | `UnitreeSkillContainer` | Move relative to current position |
+| `execute_sport_command(command_name)` | `UnitreeSkillContainer` | Unitree sport commands (sit, stand, flip, ...) |
+| `wait(seconds)` | `UnitreeSkillContainer` | Pause execution |
+| `observe()` | `GO2Connection` | Capture and return the current camera frame |
+| `navigate_with_text(query)` | `NavigationSkillContainer` | Navigate to a place by description |
+| `tag_location(location_name)` | `NavigationSkillContainer` | Tag the current position for later recall |
+| `stop_navigation()` | `NavigationSkillContainer` | Cancel the current navigation goal |
+| `follow_person(...)` | `PersonFollowSkillContainer` | Visually follow a described person |
+| `speak(text)` | `SpeakSkill` | Text-to-speech |
+| `where_am_i()` | `GoogleMapsSkillContainer` | Current street/area from GPS |
+| `map_query(query)` | `OsmSkill` | Search OpenStreetMap with a VLM |
+
+## System prompts
+
+The system prompt is robot policy, not boilerplate. The default Go2 prompt (`dimos/agents/system_prompt.py`) tells the agent what robot it controls, what its skills do, and how to behave with people around. If you add or remove skills, update the prompt to match - an agent prompted about skills that do not exist will hallucinate calls to them, and an agent not told about a new skill will underuse it.
+
+Set it per-blueprint: `McpClient.blueprint(system_prompt=...)`.
+
+## Next
+
+- [Tutorial: add your own skill](/agents/add-a-skill) - end to end, verified at each step
+- [Tutorial: drive the Go2 with language](/agents/drive-go2-with-language)

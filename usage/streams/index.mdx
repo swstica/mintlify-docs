@@ -1,20 +1,61 @@
 ---
 title: "Streams"
+description: "Typed pub/sub between modules, built on RxPY: what a stream is and which guide covers your use case"
 ---
 
-Dimos uses reactive streams (RxPY) to handle sensor data. This approach naturally fits robotics where multiple sensors emit data asynchronously at different rates, and downstream processors may be slower than the data sources.
+A **stream** is how one module sends data to another in DimOS. A module declares typed ports on its config: `In[T]` for data it consumes, `Out[T]` for data it produces (`T` is a message type, often something from `dimos.msgs.*`). When you compose modules into a blueprint with `autoconnect()`, streams are wired together automatically by matching `(name, type)` pairs across the union of modules - no manual plumbing required.
+
+Under the hood, streams are built on [RxPY](https://github.com/ReactiveX/RxPY) (`reactivex`). An `Out[T]` is observable and broadcasts to every subscriber; an `In[T]` subscribes through whatever [transport](/usage/transports) connects it to its source. This reactive-streams approach fits robotics well: sensors emit data asynchronously at different rates, and downstream consumers are often slower than the sources feeding them.
+
+This section is a practical guide to working with streams once they exist - composing operators, handling backpressure, aligning timestamps across sensors, filtering for quality, and recording/replaying data. For how streams fit into the module and blueprint model, see [How DimOS fits together](/usage/how-dimos-fits-together); for how to declare `In[T]`/`Out[T]` on a module, see [Modules](/usage/modules).
+
+## Declaring stream ports
+
+A module declares its streams as typed fields on the class:
+
+```python skip
+from dimos.core.module import Module
+from dimos.core.stream import In, Out
+from dimos.msgs.sensor_msgs.Image import Image
+
+class CameraModule(Module):
+    color_image: Out[Image]
+
+class DetectorModule(Module):
+    color_image: In[Image]
+```
+
+Compose the two with `autoconnect()` and `color_image` is wired automatically, since the output and input agree on both name and type:
+
+```python skip
+from dimos.core.coordination.blueprints import autoconnect
+
+my_app = autoconnect(CameraModule.blueprint(), DetectorModule.blueprint())
+```
+
+From here, `color_image.observable()` on the consuming side gives you an RxPY `Observable[Image]` you can pipe through the operators covered in this section. See [Modules](/usage/modules) for handler patterns (`handle_x` methods, sync subscriptions, Specs) once a stream is wired.
 
 ## Guides
 
-| Guide                                        | Description                                                   |
-|----------------------------------------------|---------------------------------------------------------------|
-| [ReactiveX Fundamentals](/usage/streams/reactivex)       | Observables, subscriptions, and disposables                   |
-| [Advanced Streams](/usage/streams/advanced_streams)      | Backpressure, parallel subscribers, synchronous getters       |
-| [Quality-Based Filtering](/usage/streams/quality_filter) | Select highest quality frames when downsampling streams       |
-| [Temporal Alignment](/usage/streams/temporal_alignment)  | Match messages from multiple sensors by timestamp             |
-| [Storage & Replay](/usage/streams/storage_replay)        | Record sensor streams to disk and replay with original timing |
+| Guide | What it covers |
+|-------|-----------------|
+| [ReactiveX Fundamentals](/usage/streams/reactivex) | RxPY operators quick reference - observables, subscriptions, and the common `.pipe()` patterns used in this codebase |
+| [Storage & Replay](/usage/streams/storage_replay) | Recording streams to disk and replaying them later with their original timing |
+| [Temporal Alignment](/usage/streams/temporal_alignment) | Matching messages from multiple sensors (e.g. camera + lidar) by timestamp so they can be processed together |
+| [Quality-Based Filtering](/usage/streams/quality_filter) | Selecting the best-quality frame in a time window instead of blindly dropping frames when downsampling |
+| [Advanced Streams](/usage/streams/advanced_streams) | Backpressure and parallel-subscriber patterns for fast producers and slow consumers |
 
-## Quick Example
+## Which page do I need?
+
+- I'm new to RxPY or need an operator refresher -> [ReactiveX Fundamentals](/usage/streams/reactivex)
+- I want to record sensor data and play it back later -> [Storage & Replay](/usage/streams/storage_replay)
+- I need to pair up messages from two sensors that arrive at different rates -> [Temporal Alignment](/usage/streams/temporal_alignment)
+- I'm downsampling a stream and don't want to lose the sharpest/best frame -> [Quality-Based Filtering](/usage/streams/quality_filter)
+- My consumer is slower than my producer, or I have multiple subscribers with different needs -> [Advanced Streams](/usage/streams/advanced_streams)
+
+## Quick example
+
+This sketch combines several of the guides above: filter blurry camera frames, align the result with lidar by timestamp, and apply backpressure so a slow consumer doesn't stall the pipeline.
 
 ```python skip
 from reactivex import operators as ops
@@ -41,3 +82,9 @@ aligned = align_timestamped(
 
 aligned.subscribe(lambda pair: process_frame_with_pointcloud(*pair))
 ```
+
+## See also
+
+- [How DimOS fits together](/usage/how-dimos-fits-together) - the mental model for modules, streams, and blueprints
+- [Modules](/usage/modules) - declaring `In[T]`/`Out[T]` on a module and handling incoming messages
+- [Transports](/usage/transports) - how a stream actually moves bytes between modules (LCM, Zenoh, shared memory, etc.)

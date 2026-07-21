@@ -1,5 +1,49 @@
 ---
 title: "Memory"
+description: "DimOS has three memory systems. This page tells you which one you mean."
 ---
 
-Page under construction for the hackathon docs revamp.
+"Robot memory" is user language for three different systems in DimOS. They solve different problems, run at different times, and are documented separately. Start here to find the one you mean.
+
+```
+                 "Robot memory" (user language)
+                           │
+       ┌───────────────────┼───────────────────────┐
+       ▼                   ▼                       ▼
+  Place memory        Episode store           Event memory
+  SpatialMemory       memory2 Recorder        TemporalMemory
+  (live, powers       (record / replay /      (experimental)
+   language nav)       offline analysis)
+```
+
+## The three systems
+
+| System | What it is | Question it answers | Where |
+|--------|-----------|---------------------|-------|
+| **SpatialMemory** | Live place map: CLIP embeddings of what the robot sees, stored against poses (ChromaDB) | "Go to the kitchen" - where is the place that looks like X? | `dimos/perception/spatial_perception.py`, runs inside agentic blueprints |
+| **memory2** | Pose-stamped observation store: every sensor stream recorded to SQLite with a query DSL, embeddings, and plotting | "Show me everything the robot saw yesterday; find frames matching 'plant'" | `dimos/memory2/`, used by Recorder modules and the `dimos mem` / `dimos dataprep` CLIs |
+| **TemporalMemory** | Experimental VLM pipeline turning video into an entity/event graph | "What happened? Where did I leave the cup?" | `dimos/perception/experimental/temporal_memory/` |
+
+One sentence of truth: **runtime language navigation uses SpatialMemory; long-run sensor history and offline analysis use memory2; "what happened" is experimental TemporalMemory.**
+
+## Which blueprint is which
+
+The blueprint names are easy to misread. This table is exact:
+
+| Blueprint | What it actually runs |
+|-----------|----------------------|
+| `unitree-go2-agentic` | Live SpatialMemory + perceive loop + agent. This is the "go find the kitchen" path - see the [tutorial](/agents/drive-go2-with-language). |
+| `unitree-go2-memory` | The Go2 stack plus a memory2 **Recorder**: it records sensors to a SQLite database. It is not temporal memory and does not answer questions; it collects data. |
+| `unitree-go2-temporal-memory` | The experimental TemporalMemory pipeline. |
+
+## Typical workflows
+
+- **Language navigation (live):** run `unitree-go2-agentic`, tag and query places. [Tutorial: drive the Go2 with language](/agents/drive-go2-with-language).
+- **Record and inspect (offline):** run `unitree-go2-memory` (or any Recorder), then open the database, plot trajectories, and search frames semantically. [Record & replay](/capabilities/memory/record-and-replay), [Offline analysis](/capabilities/memory/offline-analysis).
+- **Library use:** memory2 is a standalone observation-store library with its own API. [Reference: intro](/capabilities/memory/reference/intro), [architecture](/capabilities/memory/reference/architecture), [streaming](/capabilities/memory/reference/streaming), [embeddings](/capabilities/memory/reference/embeddings).
+
+## Limits, honestly
+
+- There is **no full object permanence**. SpatialMemory remembers what places look like and where named locations are; it does not maintain long-lived identity of individual objects across time.
+- `navigate_with_text` matches against a similarity threshold; a place the robot never looked at cannot be found.
+- TemporalMemory is experimental: interfaces and quality will change, and it is not part of the default agentic stack.

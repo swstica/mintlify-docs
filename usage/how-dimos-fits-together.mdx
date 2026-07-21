@@ -1,5 +1,225 @@
 ---
 title: "How DimOS fits together"
+description: "The mental model: modules, streams, blueprints, and how you build applications on them"
 ---
 
-Page under construction for the hackathon docs revamp.
+DimOS is a modular robotics runtime: you write small **modules**, wire them into a **blueprint**, and run that stack with `dimos run`. You usually compose existing modules first; you write new ones when you need custom sensors, planners, or skills.
+
+## Mental model
+
+| Piece | What it is | Analogy |
+|--------|------------|---------|
+| **Module** | One autonomous subsystem (camera, detector, robot connection, skill container) | A microservice / ROS node |
+| **Streams** (`In[T]` / `Out[T]`) | Typed pub/sub between modules | ROS topics |
+| **RPC / Skills** | Callable methods; skills are RPCs exposed to the LLM agent | Services / tools |
+| **Blueprint** | Recipe: which modules to start, config, and how streams connect | Compose file / launch file |
+| **`dimos run`** | Deploys the blueprint into worker processes | `docker compose up` |
+
+Flow in one line:
+
+**write modules → compose with `autoconnect()` into a blueprint → `dimos run <name>` (or `.build().loop()` in Python)**
+
+---
+
+## Day 0: run something that already exists
+
+```bash
+uv venv --python 3.12
+uv pip install 'dimos[base,unitree]'
+dimos list
+
+# Offline / replay (no robot needed for some stacks)
+dimos --replay run unitree-go2
+
+# Real hardware
+dimos run unitree-go2-agentic --robot-ip 192.168.123.161
+
+# Sim
+dimos --simulation run unitree-g1-agentic-sim
+```
+
+See the [Quickstart](/quickstart) for full install options.
+
+Useful ops:
+
+```bash
+dimos status
+dimos log -f
+dimos agent-send "walk forward"
+dimos stop
+```
+
+Start here if you just want a working stack. Building your own app usually means **reusing** these modules and blueprints, then extending them.
+
+---
+
+## How you actually build applications
+
+There are three layers. Most apps touch all of them eventually; you start at the top.
+
+### 1. Compose blueprints (most common)
+
+A blueprint is a frozen recipe of modules. You glue them with `autoconnect()`, which connects streams by **`(name, type)`** (e.g. both have `color_image: Image`).
+
+```python
+from dimos.core.coordination.blueprints import autoconnect
+from dimos.hardware.sensors.camera.module import CameraModule
+from dimos.perception.detection.module2D import Detection2DModule
+
+my_app = autoconnect(
+    CameraModule.blueprint(),
+    Detection2DModule.blueprint(),
+)
+```
+
+Run it:
+
+```python
+my_app.build().loop()   # blocks until Ctrl-C
+```
+
+Or expose it so the CLI finds it (`dimos run my-app`):
+
+- In-repo: add a module-level blueprint variable and regenerate the registry
+  (`pytest dimos/robot/test_all_blueprints_generation.py`)
+- External package: entry points under `dimos.blueprints` (see [Blueprints](/usage/blueprints))
+
+You can nest blueprints (inherit a Go2 stack, swap one module, add skills):
+
+```python
+from dimos.core.coordination.blueprints import autoconnect
+
+# Pseudocode shape of real blueprints in the repo
+my_stack = autoconnect(
+    unitree_go2_spatial,   # robot + sensors + nav
+    MyCustomDetector.blueprint(),
+    MySkillContainer.blueprint(),
+)
+```
+
+Overrides: later duplicate wins; remappings rename streams; transports pick LCM vs shared memory for images, etc.
+
+**This is the main "create my robotics application" path:** pick existing modules (robot connection, cameras, mapping, agent, MCP), wire a blueprint, run it.
+
+### 2. Write modules (when you need new capability)
+
+A module is a Python class with lifecycle + streams:
+
+```python
+from dimos.core.module import Module
+from dimos.core.stream import In, Out
+from dimos.core.core import rpc
+from dimos.msgs.sensor_msgs.Image import Image
+
+class MyFilter(Module):
+    color_image: In[Image]
+    processed: Out[Image]
+
+    @rpc
+    def start(self) -> None:
+        super().start()
+        self.color_image.subscribe(self._on_image)
+
+    def _on_image(self, img: Image) -> None:
+        self.processed.publish(do_something(img))
+```
+
+Patterns you'll use:
+
+- **Sensors / hardware**: produce `Out[...]` streams
+- **Perception / planning**: `In` + `Out`
+- **Skill containers**: `@skill` methods the agent can call
+- **Cross-module RPC**: declare a `Spec` Protocol; the blueprint injects the matching module at build time
+
+Heavy things (robot drivers, voxel maps) often set `dedicated_worker = True` so they get their own process.
+
+You can also run a single module in-process for debugging (webcam demo in [Modules](/usage/modules)) without a full blueprint.
+
+### 3. Add agent skills (for LLM-driven robots)
+
+`@skill` = RPC + tool schema for the agent. Docstring and type annotations are required.
+
+```python
+from dimos.agents.annotation import skill
+from dimos.core.module import Module
+
+class MySkills(Module):
+    @skill
+    def wave(self, times: int = 1) -> str:
+        """Wave the arm.
+
+        Args:
+            times: Number of waves.
+        """
+        # call robot RPCs / publish cmds
+        return f"Waved {times} times"
+```
+
+Agentic blueprints usually include both:
+
+- `McpServer.blueprint()` - HTTP tools on port 9990
+- `McpClient.blueprint(system_prompt=...)` - LLM that calls those tools
+
+Then:
+
+```bash
+dimos mcp list-tools
+dimos mcp call wave --arg times=2
+dimos agent-send "wave twice"
+```
+
+---
+
+## Practical path: "my own robotics app"
+
+A realistic sequence:
+
+1. **Run a stock blueprint** for your robot (or closest stack) and confirm hardware/replay works.
+2. **Clone composition** - copy a nearby blueprint under `dimos/robot/.../blueprints/` (or an external package) and `autoconnect` only what you need.
+3. **Add or swap modules** - e.g. your camera, detector, custom planner.
+4. **Wire mismatches** with `.remappings(...)` when stream names differ.
+5. **Expose behavior** with `@skill` + update the system prompt if you use an agent.
+6. **Run & debug** with `dimos log`, topic tools, and Rerun (`--viewer`).
+7. **Ship** as a named blueprint (`dimos list` / entry point).
+
+You do **not** need a full framework rewrite for every app. Most product apps are:
+
+- 80% composition of existing modules
+- 20% one custom module + skills
+
+---
+
+## What goes where in the repo
+
+```
+dimos/
+  core/           # Module, streams, blueprints, transports, workers
+  msgs/           # Typed message types
+  robot/          # Per-robot connections + blueprints (go2, g1, ...)
+  hardware/       # Cameras, sensors
+  perception/     # Detection, tracking, ...
+  memory2/        # Pose-stamped observation store (record/replay)
+  navigation/     # Planning, exploration
+  learning/       # Teleop data collection + dataset prep (LeRobot/HDF5)
+  agents/         # Agent, @skill, MCP, skill containers
+```
+
+Read next (in order):
+
+1. [Modules](/usage/modules) - modules + connecting streams
+2. [Blueprints](/usage/blueprints) - composition, remapping, skills, RPC
+3. [Configuration](/usage/configuration) - `GlobalConfig` / CLI / `.env`
+4. A real blueprint, e.g. Go2 agentic under `dimos/robot/unitree/go2/blueprints/`
+
+---
+
+## Short answers
+
+| Question | Answer |
+|----------|--------|
+| Do I write blueprints? | Yes - that's how you define an application stack. |
+| Do I write modules? | Yes when you need new behavior; often you only compose existing ones. |
+| How do modules talk? | Typed streams (`In`/`Out`) auto-wired by name+type; RPC/skills for commands. |
+| How do I run it? | `dimos run <blueprint>` or `blueprint.build().loop()`. |
+| How do agents control the robot? | `@skill` methods + McpServer/McpClient in the blueprint. |
+| Own app outside this monorepo? | Package entry points in `dimos.blueprints`, install next to DimOS, `dimos run my-pkg.my-app`. |

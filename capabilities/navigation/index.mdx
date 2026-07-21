@@ -1,19 +1,21 @@
 ---
-title: "Go2 Navigation Overview"
-description: "Live column-carving navigation and premap relocalization for the Unitree Go2."
+title: "Navigation"
+description: "Goal-driven navigation: three ways to send a goal, live mapping or premap relocalization"
 ---
 
-The Go2 navigation stack uses a simple **column-carving voxel map** strategy: each new LiDAR frame replaces the corresponding region of the global map entirely, ensuring the map always reflects the latest observations. Map live as you drive, or return to a known space using a saved premap and relocalization.
+Navigation turns a **goal** into planned, replanned motion. You can send that goal three ways - click a point in the viewer, call `set_goal` from Python, or say "go to the kitchen" through the agent - and all three drive the same stack. Start with [Using navigation](/capabilities/navigation/using-navigation).
 
 ![Live Go2 navigation in Rerun](/capabilities/navigation/assets/noros_nav.gif)
+
+Under the hood, the Go2 stack uses a **column-carving voxel map**: each new LiDAR frame replaces the corresponding region of the global map entirely, so the map always reflects the latest observations. Map live as you drive, or return to a known space using a saved premap and relocalization.
 
 ## Choose your workflow
 
 | Workflow | When to use | Blueprint | Docs |
 |----------|-------------|-----------|------|
-| **Live mapping** | Explore a new space where the map updates every frame | `unitree-go2` | [Navigation deep dive](/capabilities/navigation/deep_dive) |
+| **Live mapping** | Explore a new space where the map updates every frame | `unitree-go2` | [Using navigation](/capabilities/navigation/using-navigation) |
 | **Premap + relocalization** | Return to a known space and plan on a loop-closed map | `unitree-go2-relocalization` | [Relocalization](/capabilities/navigation/relocalization) |
 
 Live column-carving maps are fast and reactive, but odometry drifts over long distances. For spaces you revisit, record once, run pose-graph optimization (PGO) offline, then relocalize against the exported premap at runtime.
 
-For hardware setup, simulation, and the full blueprint list, see the [Go2 platform guide](/platforms/quadruped/go2/index).
+Internals (voxel mapper, costmap, planner data flow): [How navigation works](/capabilities/navigation/deep_dive). For hardware setup, simulation, and the full blueprint list, see the [Go2 platform guide](/platforms/quadruped/go2/index).

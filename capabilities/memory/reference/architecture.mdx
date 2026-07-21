@@ -14,21 +14,21 @@ Store → Stream → [filters / transforms / terminals] → Stream  → [filters
     Backend (ObservationStore + BlobStore + VectorStore + Notifier)     Backend                                      In Memory
 ```
 
-**Store** owns a storage location (file, in-memory) and directly manages named streams. **Stream** is the query/iteration surface — lazy until a terminal is called. **Backend** is a concrete composite that orchestrates ObservationStore + BlobStore + VectorStore + Notifier for each stream.
+**Store** owns a storage location (file, in-memory) and directly manages named streams. **Stream** is the query/iteration surface - lazy until a terminal is called. **Backend** is a concrete composite that orchestrates ObservationStore + BlobStore + VectorStore + Notifier for each stream.
 
 Supporting Systems:
 
-- BlobStore — separates large payloads from metadata. FileBlobStore (files on disk) and SqliteBlobStore (blob table per stream). Supports lazy loading.
-- Codecs — codec_for() auto-selects: JpegCodec for images (TurboJPEG, ~10-20x compression), LcmCodec for DimOS messages, PickleCodec fallback.
-- Transformers — Transformer[T,R] ABC wrapping iterator-to-iterator. EmbedImages/EmbedText enrich observations with embeddings. QualityWindow keeps best per time window.
-- Backpressure Buffers — KeepLast, Bounded, DropNew, Unbounded — bridge push/pull for live mode.
+- BlobStore - separates large payloads from metadata. FileBlobStore (files on disk) and SqliteBlobStore (blob table per stream). Supports lazy loading.
+- Codecs - codec_for() auto-selects: JpegCodec for images (TurboJPEG, ~10-20x compression), LcmCodec for DimOS messages, PickleCodec fallback.
+- Transformers - Transformer[T,R] ABC wrapping iterator-to-iterator. EmbedImages/EmbedText enrich observations with embeddings. QualityWindow keeps best per time window.
+- Backpressure Buffers - KeepLast, Bounded, DropNew, Unbounded - bridge push/pull for live mode.
 
 
 ## Modules
 
 | Module         | What                                                              |
 |----------------|-------------------------------------------------------------------|
-| `stream.py`    | Stream node — filters, transforms, terminals                      |
+| `stream.py`    | Stream node - filters, transforms, terminals                      |
 | `backend.py`   | Concrete Backend composite (ObservationStore + Blob + Vector + Live)         |
 | `store.py`     | Store, StoreConfig                                                |
 | `transform.py` | Transformer ABC, FnTransformer, FnIterTransformer, QualityWindow  |
@@ -51,13 +51,13 @@ Supporting Systems:
 
 | Doc | What |
 |-----|------|
-| [streaming.mdx](/capabilities/memory/reference/streaming) | Lazy vs materializing vs terminal — evaluation model, live safety |
-| [embeddings.mdx](/capabilities/memory/reference/embeddings) | Embedding layer design — EmbeddedObservation, vector search, EmbedImages/EmbedText |
-| `dimos/memory2/blobstore/blobstore.md` | BlobStore architecture — separate payload storage from metadata |
+| [streaming.mdx](/capabilities/memory/reference/streaming) | Lazy vs materializing vs terminal - evaluation model, live safety |
+| [embeddings.mdx](/capabilities/memory/reference/embeddings) | Embedding layer design - EmbeddedObservation, vector search, EmbedImages/EmbedText |
+| `dimos/memory2/blobstore/blobstore.md` | BlobStore architecture - separate payload storage from metadata |
 
 ## Query execution
 
-`StreamQuery` holds the full query spec (filters, text search, vector search, ordering, offset/limit). It also provides `apply(iterator)` — a Python-side execution path that runs all operations as in-memory predicates, brute-force cosine, and list sorts.
+`StreamQuery` holds the full query spec (filters, text search, vector search, ordering, offset/limit). It also provides `apply(iterator)` - a Python-side execution path that runs all operations as in-memory predicates, brute-force cosine, and list sorts.
 
 This is the **default fallback**. ObservationStore implementations are free to push down operations using store-specific strategies instead:
 

@@ -1,5 +1,46 @@
 ---
 title: "Perception"
+description: "What perception ships in DimOS today: detection, tracking, markers, place memory, and VLM queries"
 ---
 
-## Detections
+Perception in DimOS is a set of composable modules under `dimos/perception/`. This page lists what actually ships and which blueprints run it - so you know what you can build on versus what is experimental.
+
+## Detection
+
+- **2D detection** - `Detection2DModule` runs any detector implementation over a camera stream. Shipped detectors: YOLO11 (generic objects), YOLO11-pose (people), and **YOLO-E**, an open-vocabulary, promptable segmentation-capable detector.
+- **3D detection** - `Detection3DModule` unprojects 2D detections into 3D using depth or pointclouds, and exposes VLM query skills (`ask_vlm`, `nav_vlm`, backed by Qwen VL) so an agent can ask open-vocabulary questions about the scene. Runs in `unitree-go2-detection` and `unitree-g1-detection`.
+- **Object database** - `ObjectDBModule` folds 3D detections into a persistent object table with deduplication (pending objects get promoted to permanent as evidence accumulates). Runs in `unitree-g1-detection`.
+- **Person tracking** - `PersonTracker` (3D person tracks) feeds person following on the agentic stacks.
+
+Detections flow as typed streams: `Detection2DArray` / `Detection3DArray` messages, consumable by any module.
+
+## Fiducial markers
+
+ArUco/AprilTag detection with pose estimation, published straight into the TF tree (`MarkerDetectionStreamModule` + `MarkerTfModule`). This is load-bearing infrastructure: the Go2 stacks use markers in `unitree-go2-markers`, `unitree-go2-relocalization`, and `unitree-go2-memory`. A standalone desk-webcam demo exists as `desk-marker-tf`.
+
+## Place memory and agent-facing perception
+
+- **SpatialMemory** - the live place map (CLIP embeddings against poses) that powers `navigate_with_text`. Runs in `unitree-go2-spatial` and the G1 perceptive stacks. Details: [Memory](/capabilities/memory).
+- **PerceiveLoopSkill** - the agent's "keep looking out for X" tool, wired into `unitree-go2-spatial`.
+- **WorldBelief** - on-demand scan-and-recall over recorded perception: DINOv2 appearance galleries for re-identification, CLIP text recall over frames, and present/absent/occluded classification for world points. Runs in `xarm6-worldbelief`.
+
+## Perception for manipulation
+
+`ObjectSceneRegistrationModule` uses YOLO-E to detect and register objects for arm workspaces. Runs in `xarm-perception` (and its agentic and sim variants); try it standalone with `dimos run demo-object-scene-registration`, which exposes open-vocabulary detection as MCP tools.
+
+## Models used
+
+| Model | Used for |
+|-------|----------|
+| YOLO11 / YOLO11-pose | 2D object and person detection |
+| YOLO-E | Open-vocabulary, promptable detection and segmentation |
+| CLIP | Place memory embeddings, text-to-frame recall |
+| DINOv2 | Appearance embeddings for re-identification |
+| Qwen VL | Open-vocabulary scene questions (`ask_vlm`) |
+| ArUco / AprilTag (OpenCV) | Marker pose estimation |
+
+## Status, honestly
+
+- Everything above is composed into registered blueprints and runs today.
+- **Experimental:** `TemporalMemory` (video to entity/event graph) lives under `perception/experimental/` and runs only in `unitree-go2-temporal-memory`. Interfaces will change.
+- Some modules exist in the registry but are not composed into any shipped stack yet (standalone 2D/3D object trackers, a generic Re-ID module). They work as building blocks but have no polished path; check the code before relying on them.

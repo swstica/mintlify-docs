@@ -1,123 +1,125 @@
 ---
 title: "Collect data & train a policy"
+description: "The imitation-learning loop: demonstrate a task, record episodes, export a LeRobot dataset, train"
 ---
 
-End-to-end: teleoperate an arm, record episodes to a session DB, then convert
-that DB into a LeRobot or HDF5 dataset for imitation learning.
+End-to-end: demonstrate a task on an arm, record episodes to a session DB, convert that DB into a LeRobot or HDF5 dataset, and train an imitation-learning policy on it.
 
 ```
-teleop (Quest) ─▶ CollectionRecorder ─▶ session_<robot>_<ts>.db ─▶ dimos dataprep ─▶ dataset
+demonstrate (teach mode / Quest VR) ─▶ episodes in a session .db ─▶ dimos dataprep ─▶ LeRobot dataset ─▶ train
 ```
 
----
+DimOS ships everything up to and including the dataset. Training itself runs in [LeRobot](https://github.com/huggingface/lerobot); the deploy-back-to-DimOS story is in progress (status below).
 
-## 1. Record a session
+## 1. Record demonstrations
 
-Run a collection blueprint. Add `--simulation` to drive MuJoCo; omit it for real
-hardware (a RealSense + the arm).
+Two supported ways to demonstrate. Whichever you use, three data-quality rules apply:
+
+- **Write a real task description** (`--task` / `default_task_label`). Language-conditioned policies train on this text; a placeholder bakes in uselessness.
+- **Stay out of the camera frame.** The policy trains on exactly what the camera sees; at deployment there is no human in the scene.
+- **Record the gripper.** If the task grasps, the gripper channel must be in the observation and action.
+
+### Option A: teach mode (kinesthetic) - recommended
+
+On arms that support it (currently the [Galaxea A1Z](/platforms/arms/a1z)), put the arm in gravity-compensated zero-force mode and drag it through the task:
 
 ```bash
-# XArm7 in sim
-dimos --simulation run learning-collect-quest-xarm7
-
-# Piper on real hardware
-dimos run learning-collect-quest-piper
+uv run dimos a1z teach --task "pick up the object"
 ```
 
-This brings up teleop, a RealSense (real only), the episode monitor, and the
-recorder, all wired together.
+Each saved episode contains camera frames plus measured joints and gripper position. The command prints the session `.db` path. Full details, safety notes, and camera options: [Galaxea A1Z](/platforms/arms/a1z).
 
-### Controls (Quest)
+### Option B: Quest VR teleop
+
+Run a collection blueprint. Add `--simulation` to drive MuJoCo; omit it for real hardware (a RealSense + the arm):
+
+```bash
+dimos --simulation run learning-collect-quest-xarm7   # XArm7 in sim
+dimos run learning-collect-quest-piper                # Piper on real hardware
+```
+
+This brings up teleop, the camera, the episode monitor, and the recorder, wired together.
 
 | Button | Action |
 | --- | --- |
-| **A** (right) / **X** (left) | **Hold to engage** — the arm tracks the controller only while held |
-| **B** | **Toggle record** — press to start an episode, press again to save it |
+| **A** (right) / **X** (left) | **Hold to engage** - the arm tracks the controller only while held |
+| **B** | **Toggle record** - press to start an episode, press again to save it |
 | **Y** | **Discard** the in-progress episode |
 
-So a take is: hold **A** to move the arm into place → press **B** to start →
-perform the task → press **B** to save (or **Y** to throw it away). The terminal
-prints one line per transition:
+A take is: hold **A** to move the arm into place, press **B** to start, perform the task, press **B** to save (or **Y** to throw it away). The terminal prints one line per transition:
 
 ```
 [collect] ▶ RECORDING episode  (state=recording  saved=0  discarded=0)
 [collect] ✓ SAVED episode      (state=idle       saved=1  discarded=0)
 ```
 
-> End each good take with **B** before quitting — an episode still recording at
-> shutdown is dropped.
+> End each good take with **B** before quitting - an episode still recording at shutdown is dropped.
 
-### Where the recording goes
+(Keyboard teleop also exists, but do not collect training data with it. See [choosing a teleop method](/capabilities/manipulation#choosing-a-teleop-method).)
+
+### Where recordings go
 
 ```
-~/.local/state/dimos/recordings/session_<robot>_<YYYYMMDD_HHMMSS>.db
+~/.local/state/dimos/recordings/
 ```
 
-A new timestamped file per run (nothing is overwritten). It records three
-streams: `color_image`, `coordinator_joint_state`, and `status` (the episode
-start/save/discard markers).
-
-The exact path is printed when the recorder starts — note it for the next step.
-
----
+A new timestamped `.db` file per session, nothing overwritten. Quest sessions record `color_image`, `coordinator_joint_state`, and `status` (episode start/save/discard markers); the exact path is printed when the recorder starts.
 
 ## 2. Build a dataset
 
-DataPrep is an offline batch step that reads a session DB and writes a dataset.
-The obs/action stream mapping is nested, so it comes from a JSON config — start
-from `dimos/learning/dataprep/example_config.json` and edit the
-`source`/`output` to taste.
+DataPrep is an offline batch step that reads a session DB and writes a dataset. The observation/action stream mapping comes from a JSON config.
+
+For the A1Z, a ready-made config ships in the repo:
 
 ```bash
-# LeRobot v3.0 (default)
+uv run dimos dataprep build \
+  --source ~/.local/state/dimos/recordings/a1z_teach_<timestamp>.db \
+  --output ./a1z_lerobot_dataset \
+  --format lerobot \
+  --config dimos/learning/dataprep/galaxea_a1z_state_config.json
+```
+
+For other arms, start from `dimos/learning/dataprep/example_config.json` and edit to taste:
+
+```bash
 dimos dataprep build \
   --source ~/.local/state/dimos/recordings/session_xarm7_20260622_120000.db \
   --config dimos/learning/dataprep/example_config.json
 
-# HDF5 instead
+# HDF5 instead of LeRobot
 dimos dataprep build -s <session.db> -c <config.json> -f hdf5
 ```
 
-`--source` / `--output` / `--format` override whatever the config specifies, so
-you can reuse one config across runs and just swap `--source`. The dataset is
-written to the config's `output.path` (the example uses `data/datasets/session`)
-unless you pass `--output`.
-
-Inspect the result (features, shapes, dtypes, episode/frame counts):
+`--source` / `--output` / `--format` override the config, so one config serves many sessions. Inspect the result (features, shapes, dtypes, episode/frame counts):
 
 ```bash
-dimos dataprep inspect data/datasets/session       # LeRobot dir
-dimos dataprep inspect data/datasets/session.hdf5  # HDF5 file
+dimos dataprep inspect ./a1z_lerobot_dataset
 ```
 
-Each dataset gets a `dimos_meta.json` sidecar recording exactly how it was built
-(source, sync, episodes).
+Each dataset gets a `dimos_meta.json` sidecar recording exactly how it was built.
 
----
+### Config fields that matter
 
-## 3. Config reference
+- **`source`** - the session `.db`.
+- **`observation` / `action`** - map a dataset feature name to a recorded `{stream, field}`. Action defaults to the *next* frame's joint state (`action_shift: 1`), giving a next-state behavioral-cloning target.
+- **`sync`** - resample everything onto one timeline: `anchor` stream, `rate_hz`, nearest-match `tolerance_ms`.
+- **`output`** - `format` (`lerobot` | `hdf5`), `path`, and `metadata` (`robot`, `default_task_label`, ...).
 
-See `dimos/learning/dataprep/example_config.json` for a full,
-working example. The fields that matter:
+## 3. Train a policy
 
-- **`source`** — the session `.db`.
-- **`observation` / `action`** — map a dataset feature name to a recorded
-  `{stream, field}`. Action defaults to the *next* frame's joint state (see
-  `action_shift`), giving a next-state behavioral-cloning target.
-- **`sync`** — resample everything onto one timeline: `anchor` stream,
-  `rate_hz`, nearest-match `tolerance_ms`, and `action_shift` (1 = next-state BC,
-  0 = action == state). `fps` is derived from `rate_hz` unless set explicitly.
-- **`output`** — `format` (`lerobot` | `hdf5`), `path`, and `metadata`
-  (`robot`, `default_task_label`, …).
+The LeRobot dataset is the handoff point. What it unlocks, roughly in order of effort:
 
----
+- **ACT** - the reliable baseline. On the order of 50-100 good episodes per task; trains in hours on a single consumer GPU with LeRobot's standard training scripts.
+- **SmolVLA** - a small language-conditioned VLA, fine-tunable on a consumer GPU.
+- **pi0 / pi0-FAST** - fine-tunable in LeRobot, but wants datacenter-class GPUs.
+- **GR00T** - NVIDIA's fine-tuning pipeline consumes LeRobot datasets directly.
+
+<Note>
+**Status, honestly:** DimOS ships collection and dataset export today. Training runs in LeRobot outside of DimOS, and the path for deploying a trained policy back onto a DimOS-controlled arm is under active development - expect this section to grow. Until then, treat the exported dataset as the stable interface.
+</Note>
 
 ## Notes
 
-- **Sim vs real camera** — under `--simulation` the MuJoCo camera supplies
-  `color_image`; on real hardware a RealSense does. The blueprint picks the
-  right one automatically.
-- **"action" is the measured next joint state**, not a recorded command. For
-  true commanded actions you'd record `joint_command` and map `action` to it.
-- **Old vs new sessions** — recordings made before the `coordinator_joint_state`
-  rename use the old stream name; point a matching config at them, or re-record.
+- **Sim vs real camera** - under `--simulation` the MuJoCo camera supplies `color_image`; on real hardware a RealSense does. The blueprint picks the right one automatically.
+- **"action" is the measured next joint state**, not a recorded command. For true commanded actions you would record `joint_command` and map `action` to it.
+- **Old sessions** - recordings made before the `coordinator_joint_state` rename use the old stream name; point a matching config at them, or re-record.

@@ -1,5 +1,125 @@
 ---
 title: "Tutorial: add your own skill"
+description: "From a Python method to a tool your agent calls - verified at every step, LLM last"
 ---
 
-Page under construction for the hackathon docs revamp.
+This tutorial takes you from nothing to a custom skill your agent calls, verifying each layer before adding the next. The golden rule: **prove everything without an LLM first**, then add the model at the very end.
+
+The smallest working example in the repo is `dimos run demo-skill` (`dimos/agents/skills/demo_skill.py`): one skill container, `McpServer`, `McpClient`, nothing else. We build the same shape.
+
+## 1. Write the skill container
+
+A skill container is an ordinary `Module` whose methods are decorated with `@skill`:
+
+```python
+# my_skills.py
+from dimos.agents.annotation import skill
+from dimos.core.module import Module
+
+
+class GreeterSkills(Module):
+    @skill
+    def greet(self, name: str, excited: bool = False) -> str:
+        """Greet a person by name.
+
+        Use this whenever the user asks you to say hello to someone.
+
+        Example:
+
+            greet("Ada", excited=True)
+
+        Args:
+            name: The person's name.
+            excited: Add an exclamation mark.
+        """
+        suffix = "!" if excited else "."
+        return f"Hello, {name}{suffix}"
+```
+
+What matters here:
+
+- The **docstring is the tool schema**. The LLM decides when to call `greet` based only on this text.
+- Parameters are JSON-serializable primitives; the return value is a `str` the LLM reads.
+- Return what happened, not "ok". The agent plans its next step from your return value.
+
+## 2. Compose a blueprint
+
+Wire the container together with the two MCP modules:
+
+```python
+# my_blueprint.py
+from dimos.agents.mcp.mcp_client import McpClient
+from dimos.agents.mcp.mcp_server import McpServer
+from dimos.core.coordination.blueprints import autoconnect
+
+from my_skills import GreeterSkills
+
+my_agent = autoconnect(
+    GreeterSkills.blueprint(),
+    McpServer.blueprint(),
+    McpClient.blueprint(),
+)
+
+if __name__ == "__main__":
+    my_agent.build().loop()
+```
+
+For a real robot you would start from an existing stack instead - the Go2 version is one line different:
+
+```python
+from dimos.robot.unitree.go2.blueprints.agentic.unitree_go2_agentic import unitree_go2_agentic
+
+my_agent = autoconnect(unitree_go2_agentic, GreeterSkills.blueprint())
+```
+
+## 3. Run it and verify the tool exists - no LLM yet
+
+```bash
+export OPENAI_API_KEY=sk-...   # needed by McpClient at startup
+python my_blueprint.py
+```
+
+In a second terminal:
+
+```bash
+dimos mcp list-tools
+```
+
+Your `greet` tool should be in the list with the docstring as its description. Now call it directly:
+
+```bash
+dimos mcp call greet --arg name=Ada --arg excited=true
+```
+
+If this returns `Hello, Ada!`, the entire skill surface works: module deployed, RPC wired, MCP schema generated, tool callable. No model was involved. **Debug at this layer** - any problem here is a real bug, cheaply reproducible, with no LLM noise on top.
+
+## 4. Now add the LLM
+
+```bash
+dimos agent-send "please greet Ada, make it excited"
+dimos log -f
+```
+
+Watch the log: the agent receives your text, picks the `greet` tool, calls it with `name="Ada", excited=true`, reads the return value, and replies.
+
+If the agent does not pick your skill, the fix is almost always the **docstring or the system prompt**, not the code. Make the docstring say when to use the skill, and if you run a robot stack with a custom prompt, mention the new capability there: `McpClient.blueprint(system_prompt=...)`.
+
+## 5. Register it (optional)
+
+To run your stack as `dimos run my-agent` instead of `python my_blueprint.py`:
+
+- **In the dimos repo:** add a module-level blueprint variable and regenerate the registry: `pytest dimos/robot/test_all_blueprints_generation.py`
+- **In your own package:** declare an entry point in the `dimos.blueprints` group - see [Blueprints](/usage/blueprints).
+
+## The checklist, generalized
+
+This is the full path for any physical agent, in order. Each step is verifiable on its own:
+
+1. Working non-agent robot stack first (`dimos run <robot>` behaves).
+2. Robot actions behind modules with RPC and `Spec`s.
+3. Skills wrapping those actions: docstring, simple types, informative string returns.
+4. Skill container in the blueprint.
+5. `McpServer` + `McpClient` with a system prompt matched to the real skill set.
+6. Prove with `dimos mcp list-tools` and `mcp call` - no LLM.
+7. Then `agent-send` and the web chat.
+8. Register the blueprint.

@@ -1,5 +1,76 @@
 ---
 title: "Using navigation"
+description: "What using nav means in DimOS: run a nav-capable stack, send a goal one of three ways, monitor, cancel"
 ---
 
-Page under construction for the hackathon docs revamp.
+Using navigation in DimOS means exactly this: run a blueprint that includes the nav stack, give it a **goal**, and the stack plans a path and drives the robot there, replanning as the map updates. There are three ways to send that goal - pick the one that matches how you are building.
+
+To follow along without hardware:
+
+```bash
+dimos --simulation run unitree-go2      # robot actually moves (MuJoCo)
+dimos --replay run unitree-go2          # watch the stack plan over a recorded session
+```
+
+On a real Go2, read the [platform guide](/platforms/quadruped/go2/index) first.
+
+## Surface 1: click in the viewer (zero code)
+
+With the stack running, open the web viewer and click a point on the map. The click is published as a `clicked_point` stream, and the navigation module consumes it as a goal: the costmap updates, a path appears, and the robot drives.
+
+This is the fastest way to sanity-check a nav stack, and the right first test after any mapping or planner change: if click-to-navigate works, the whole chain (map, costmap, planner, controller) works.
+
+## Surface 2: from Python (programmatic)
+
+The entire user-facing navigation API is one small protocol, `NavigationInterfaceSpec` (`dimos/navigation/navigation_spec.py`):
+
+```python
+class NavigationInterfaceSpec(Spec, Protocol):
+    def set_goal(self, goal: PoseStamped) -> bool: ...
+    def get_state(self) -> NavigationState: ...
+    def is_goal_reached(self) -> bool: ...
+    def cancel_goal(self) -> bool: ...
+```
+
+Any module in your blueprint can declare a `Spec` reference to the navigation module and drive it:
+
+```python
+from dimos.core.module import Module
+from dimos.navigation.navigation_spec import NavigationInterfaceSpec
+
+
+class Patroller(Module):
+    _navigation: NavigationInterfaceSpec
+
+    def patrol_to(self, goal_pose) -> None:
+        self._navigation.set_goal(goal_pose)
+        # poll self._navigation.is_goal_reached(), or cancel with cancel_goal()
+```
+
+The blueprint injects the matching navigation module at build time - this is the same mechanism the built-in navigation skills use. For driving a running stack from an external script, see the [Python API](/usage/python-api).
+
+## Surface 3: natural language (through the agent)
+
+On agentic blueprints, navigation is exposed as skills: `navigate_with_text("kitchen")`, `tag_location("kitchen")`, `stop_navigation()`. The skill resolves language to a pose (tagged locations, then live vision, then the CLIP place map) and calls `set_goal` - surface 2 with a resolver in front.
+
+```bash
+dimos agent-send "go to the kitchen"                     # via the LLM
+dimos mcp call navigate_with_text --arg query=kitchen    # same skill, no LLM
+```
+
+Full walkthrough: [Tutorial: drive the Go2 with language](/agents/drive-go2-with-language).
+
+## Monitoring and canceling
+
+- **Watch it:** the viewer shows the map, costmap, and planned path live; `dimos log -f` shows planner state transitions.
+- **Programmatic:** `get_state()` and `is_goal_reached()` on the interface; `cancel_goal()` to abort.
+- **Language:** "stop" (the agent calls `stop_navigation()`).
+
+## Live mapping or premap?
+
+| Situation | Use |
+|-----------|-----|
+| Exploring a new space | Live mapping (default `unitree-go2`) - the map builds as you drive |
+| Returning to a known space, want a drift-free map | [Premap + relocalization](/capabilities/navigation/relocalization) - record once, optimize offline, relocalize at runtime |
+
+How the map and planner actually work under the hood: [How navigation works](/capabilities/navigation/deep_dive).

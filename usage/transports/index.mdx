@@ -2,14 +2,9 @@
 title: "Transports"
 ---
 
-Transports connect **module streams** across **process boundaries** and/or **networks**.
+For the general module/stream/blueprint model, see [How DimOS fits together](/usage/how-dimos-fits-together).
 
-* **Module**: a running component (e.g., camera, mapping, nav).
-* **Stream**: a unidirectional flow of messages owned by a module (one broadcaster → many receivers).
-* **Topic**: the name/identifier used by a transport or pubsub backend.
-* **Message**: payload carried on a stream (often `dimos.msgs.*`, but can be bytes / images / pointclouds / etc.).
-
-Each edge in the graph is a **transported stream** (potentially different protocols). Each node is a **module**:
+Transports connect module streams across process boundaries and/or networks - the mechanics of how a message gets from one module's `Out[T]` to another's `In[T]`. Each edge below is a transported stream (potentially a different protocol per edge); each node is a module:
 
 ![go2_nav](/usage/assets/go2_nav.svg)
 
@@ -85,40 +80,6 @@ python -m pytest -sv -k "not bytes" dimos/protocol/pubsub/benchmark/tool_benchma
 ```
 
 ![Benchmark results](/usage/assets/pubsub_benchmark.png)
-
-## Abstraction layers
-
-<details>
-<summary>Pikchr</summary>
-
-```pikchr output=../assets/abstraction_layers.svg fold
-color = white
-fill = none
-linewid = 0.5in
-boxwid = 1.0in
-boxht = 0.4in
-
-# Boxes with labels
-B: box "Blueprints" rad 10px
-arrow
-M: box "Modules" rad 5px
-arrow
-T: box "Transports" rad 5px
-arrow
-P: box "PubSub" rad 5px
-
-# Descriptions below
-text "robot configs" at B.s + (0.1, -0.2in)
-text "camera, nav" at M.s + (0, -0.2in)
-text "LCM, SHM, ROS" at T.s + (0, -0.2in)
-text "pub/sub API" at P.s + (0, -0.2in)
-```
-
-</details>
-
-![output](/usage/assets/abstraction_layers.svg)
-
-We’ll go through these layers top-down.
 
 ## Using transports with blueprints
 
@@ -241,7 +202,7 @@ See [Modules](/usage/modules) for more on module architecture.
 ## Inspecting traffic (CLI)
 
 `dimos spy` is the universal transport spy: one live view of every topic moving on every
-DimOS pubsub transport — names, message rates, bandwidth, sizes, and liveness — whether the
+DimOS pubsub transport - names, message rates, bandwidth, sizes, and liveness - whether the
 system runs on LCM, Zenoh, or both.
 
 ```bash
@@ -522,11 +483,7 @@ See [`pubsub/test_spec.py`](/dimos/protocol/pubsub/test_spec.py) for the grid te
 
 ### Benchmarks
 
-Add your backend to benchmarks to compare in context:
-
-```sh skip
-python -m pytest -sv -k "not bytes" dimos/protocol/pubsub/benchmark/tool_benchmark.py
-```
+Add your backend to the same benchmark suite used in [Benchmarks](#benchmarks) above to compare it in context.
 
 # Available transports
 

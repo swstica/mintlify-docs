@@ -4,26 +4,32 @@ description: "An open source modern operating system for generalist robotics. Py
 sidebarTitle: Introduction
 ---
 
-**Dimensional** is the modern operating system for generalist robotics. We are setting the next-generation SDK standard and integrating with the majority of robot manufacturers.
+**DimOS** is a modular robotics runtime: you write small **modules**, wire them into a **blueprint**, and run that stack with `dimos run` - on quadrupeds, humanoids, arms, and drones. Simple install, entirely Python, no ROS required.
 
-With a simple install and no ROS required, you can build physical applications entirely in Python that run on humanoids, quadrupeds, or drones.
+It is **agent native** in a precise sense: robot capabilities are exposed as skills an LLM can call over MCP, so "Hey robot, go find the kitchen" is a supported control surface - and every skill also works from the CLI with no LLM involved.
 
-Dimensional is agent native, describe behavior in natural language and build local and hosted multi-agent systems that work with your hardware. Agents run as native modules, subscribing to embedded streams from perception (LiDAR, camera) and spatial memory down to control loops and motor drivers.
+Start with the [Quickstart](/quickstart): fifteen minutes from install to replaying a robot session and talking to an agent, no hardware needed.
 
 ## Capabilities at a glance
 
 <Columns cols={2}>
-  <Card title="Navigation & mapping" icon="map">
-    **SLAM**, dynamic obstacle avoidance, route planning, and autonomous exploration via both DimOS native and ROS integrations.
+  <Card title="Navigation & mapping" icon="map" href="/capabilities/navigation">
+    Live SLAM with a column-carving voxel map, costmap planning and replanning, premap relocalization. Send goals by viewer click, Python, or natural language.
   </Card>
-  <Card title="Perception" icon="eye">
-    Detectors, 3D projections, VLMs, and audio processing.
+  <Card title="Perception" icon="eye" href="/capabilities/perception">
+    2D/3D detection (YOLO11, open-vocabulary YOLO-E), person tracking, fiducial markers to TF, VLM scene queries.
   </Card>
-  <Card title="Agents" icon="robot">
-    Agentive control and MCP. Example: *"Hey robot, go find the kitchen."*
+  <Card title="Agents" icon="robot" href="/agents">
+    An LLM loop over MCP-exposed skills. Tag places, navigate by description, add your own skills in a few lines.
   </Card>
-  <Card title="Spatial memory" icon="brain">
-    Spatio-temporal RAG, dynamic memory, object localization and permanence.
+  <Card title="Memory" icon="brain" href="/capabilities/memory">
+    Three systems: a live place map for language navigation, a recorded observation store with semantic search, and experimental event memory.
+  </Card>
+  <Card title="Manipulation" icon="hand" href="/capabilities/manipulation">
+    Drake-backed motion planning, teleop (teach mode, VR, keyboard), and a collect-to-LeRobot imitation learning loop.
+  </Card>
+  <Card title="Platforms" icon="microchip" href="/platforms/quadruped/go2/index">
+    Unitree Go2 and G1, Galaxea A1Z, A-750, OpenArm, xArm, Piper, drones - real, simulated, or replayed.
   </Card>
 </Columns>
 
@@ -31,9 +37,9 @@ Dimensional is agent native, describe behavior in natural language and build loc
 
 <Columns cols={2}>
   <Card title="Quickstart" icon="rocket" href="/quickstart">
-    Install DimOS, run your first blueprint, and inspect the running system.
+    Install DimOS, replay a session, drive an agent - no hardware required.
   </Card>
-  <Card title="Platforms" icon="microchip" href="/platforms/quadruped/go2/index">
-    Go2 quadruped and G1 humanoid setup, simulation, and blueprints for real hardware.
+  <Card title="How DimOS fits together" icon="diagram-project" href="/usage/how-dimos-fits-together">
+    The mental model: modules, streams, blueprints, and how you build applications on them.
   </Card>
 </Columns>

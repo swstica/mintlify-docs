@@ -1,5 +1,84 @@
 ---
 title: "Galaxea A1Z"
+description: "Bring-up, teach mode, replay, and LeRobot export for the Galaxea A1Z 6-DOF arm with G1Z gripper"
 ---
 
-Page under construction for the hackathon docs revamp.
+The Galaxea A1Z is a 6-DOF CAN-bus arm with the G1Z gripper (CAN motor 7). DimOS drives it over native Linux SocketCAN using the vendor's 250 Hz MIT position-control loop, with gravity compensation from the G1Z URDF. It is the teach-and-learn platform: drag the arm through a task in zero-gravity teach mode, record episodes with camera, and export straight to a LeRobot dataset.
+
+<Warning>
+The A1Z has **no brakes and no e-stop button** - only the PSU power switch. When motors disable, the arm goes limp and falls. Support the arm and keep the workspace clear before starting any hardware blueprint. Never leave it energized unattended.
+</Warning>
+
+## Host setup
+
+One command, run as your normal user:
+
+```bash
+./dimos/robot/manipulators/galaxea_a1z/scripts/setup_a1z.sh
+```
+
+This installs the vendor SDK (the pinned `gripper`-branch commit - vendor `main` cannot actuate the G1Z gripper), binds the HHS USB-CANFD adapter to the kernel driver, configures the stable `a1zcan` SocketCAN interface, and verifies transmission. It asks for `sudo` only for the CAN portion. Use `--sdk-only` to install or verify the Python SDK without touching CAN.
+
+After a reboot or replugging the adapter, rerun the CAN portion directly:
+
+```bash
+sudo ./dimos/robot/manipulators/galaxea_a1z/scripts/setup_a1z_can.sh
+```
+
+<Warning>
+Do not start DimOS unless the script prints `A1Z CAN setup passed`. Some Linux kernels have a broken `gs_usb` driver for this adapter: the CAN interface comes up looking normal but silently drops every transmission. The setup script detects that state and prints your options. Galaxea recommends kernel 6.8.0-124 or newer; pinned-kernel hosts (e.g. Jetsons) need a driver patch for their exact kernel.
+</Warning>
+
+Known hardware quirk: the HHS adapter can wedge its RX queue after a crashed session. If the bus behaves strangely after a crash, physically replug the adapter and rerun the CAN check.
+
+## Run the arm
+
+```bash
+uv run dimos run coordinator-galaxea-a1z
+```
+
+Startup is deliberately conservative: connecting opens the bus with motors unpowered, and activation does a **safe-start** - zero-gain enable, wait for all motors, verify the pose is within joint limits and nearly still, then hold at the measured pose. The arm never snaps to a commanded pose on enable.
+
+Joint limits (rad): j1 ±2.094, j2 [0, 3.142], j3 [-3.142, 0], j4/j5 ±1.484, j6 ±2.007. The vendor firmware emergency-disables motors if a limit is crossed - including during teach mode, which drops the arm. Keep demonstrations comfortably inside the limits.
+
+## Teach mode: record episodes by hand
+
+Teach mode puts the arm in gravity-compensated zero-force mode: you drag it through the task by hand while DimOS records. Each saved episode contains 640x480 RGB camera frames at 15 Hz plus the six measured arm joints and the gripper position.
+
+```bash
+uv run dimos a1z teach --task "pick up the object"
+```
+
+The camera defaults to `/dev/video0` (any Linux UVC camera); select another with `--camera-index N`. The `--task` text is stored with the episodes - write a real task description, since downstream language-conditioned policies train on it. Keep yourself out of the camera frame while dragging.
+
+The command prints the path of the recording database, an ordinary memory2 `.db` file under `~/.local/state/dimos/recordings/`.
+
+## Replay an episode
+
+```bash
+uv run dimos a1z replay ~/.local/state/dimos/recordings/a1z_teach_<timestamp>.db
+```
+
+The latest saved episode plays by default; pick one with `--episode` and adjust speed with `--speed`. The arm physically re-executes the taught motion - same safety rules as any motion command.
+
+## Export to a LeRobot dataset
+
+Convert a teach recording into a LeRobot v3 dataset with synchronized video, seven-element observation state (six joints + gripper), and seven-element action:
+
+```bash
+uv run dimos dataprep build \
+  --source ~/.local/state/dimos/recordings/a1z_teach_<timestamp>.db \
+  --output ./a1z_lerobot_dataset \
+  --format lerobot \
+  --config dimos/learning/dataprep/galaxea_a1z_state_config.json
+
+uv run dimos dataprep inspect ./a1z_lerobot_dataset
+```
+
+The output stores images as `observation.images.image`, measured arm and gripper state as `observation.state`, and the next measured state as `action` - ready for imitation-learning training. See [Collect data & train a policy](/capabilities/manipulation/collect-and-train) for the full loop.
+
+## If something goes wrong
+
+- **Kill switch:** cut motor power from software with the motors-off helper (`a1z_scripts/motors_off.py` on the integration branch), or use the PSU switch. Support the arm first - it will fall.
+- **Gripper stays energized after shutdown:** the vendor protocol sends the gripper-disable frame only once and it can be lost. The DimOS adapter retries this automatically; if the gripper is still stiff, use the kill switch.
+- **CAN interface up but nothing responds:** the broken-`gs_usb` kernel case above. Rerun `setup_a1z_can.sh` and read its output.

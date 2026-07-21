@@ -16,16 +16,16 @@ DimOS manipulation is three things:
 | Move an arm right now, no hardware | [Keyboard teleop quick start](#quick-start-keyboard-teleop-no-hardware) below |
 | Teach a real arm a task by dragging it | [Galaxea A1Z teach mode](/platforms/arms/a1z) |
 | Collect demonstrations and train a policy | [Collect data & train](/capabilities/manipulation/collect-and-train) |
-| Teleoperate with a VR headset | [VR teleoperation](/capabilities/manipulation/vr-teleoperation) |
+| Teleoperate with a VR headset | [VR teleoperation](/capabilities/teleoperation/vr-teleoperation) |
 | Plan collision-free motions programmatically | [Motion planning](#motion-planning) below |
-| Bring my own arm into DimOS | [Adding a custom arm](/capabilities/manipulation/adding_a_custom_arm) |
+| Bring my own arm into DimOS | [Adding a custom arm](/platforms/arms/adding_a_custom_arm) |
 
 ## Choosing a teleop method
 
 Ranked by how well they work for demonstrating tasks:
 
 1. **Teach mode (kinesthetic)** - put the arm in gravity-compensated zero-force mode and drag it through the task. Most natural demonstrations, no extra hardware. Available on the [Galaxea A1Z](/platforms/arms/a1z).
-2. **VR (Quest)** - 6-DOF controller tracking with hold-to-engage and per-episode record controls. Best when the operator must stay out of the workspace. [VR teleoperation](/capabilities/manipulation/vr-teleoperation).
+2. **VR (Quest)** - 6-DOF controller tracking with hold-to-engage and per-episode record controls. Best when the operator must stay out of the workspace. [VR teleoperation](/capabilities/teleoperation/vr-teleoperation).
 3. **Keyboard** - one key per axis. Good for smoke-testing a stack and demos without hardware; genuinely painful for collecting training data. Do not plan a data-collection session around it.
 
 ## Quick start: keyboard teleop (no hardware)

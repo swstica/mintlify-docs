@@ -1,6 +1,11 @@
 ---
 title: "Unitree Go2"
+description: "The reference DimOS platform: navigation, agentic control, recording - real, simulated, or replayed"
 ---
+
+![Unitree Go2](/platforms/quadruped/go2/assets/go2.png)
+
+The Unitree Go2 is the reference DimOS platform - the most complete stack in the repo, and the one every bundled replay dataset and most tutorials use. Everything runs three ways: on real hardware over WebRTC, in MuJoCo simulation, or against recorded sessions with no robot at all.
 
 - [Setup your Dog](/platforms/quadruped/go2/setup) - requirements, install, connecting to your Go2, and agentic control
 - [Simulation](/platforms/quadruped/go2/simulation) - try it with no hardware via replay or MuJoCo
@@ -19,12 +24,14 @@ title: "Unitree Go2"
 | `dimos run unitree-go2-memory` | Navigation + record `lidar`/`odom`/`color_image` to `.db` |
 | `dimos run unitree-go2-relocalization` | Navigation + align live scans to a saved `.pc2.lcm` premap |
 
+Add `--replay` (recorded session) or `--simulation` (MuJoCo) to any of these to run without hardware.
+
 ## Deep Dive
 
-- [Navigation overview](/capabilities/navigation/index) - live mapping vs premap relocalization
+- [Using navigation](/capabilities/navigation/using-navigation) - send goals by viewer click, Python, or language
 - [Navigation stack](/capabilities/navigation/deep_dive) - column-carving voxel mapping, costmap generation, A* planning
 - [Relocalization](/capabilities/navigation/relocalization) - record → `dimos map global --export` → replay or live deploy
+- [Tutorial: drive the Go2 with language](/agents/drive-go2-with-language) - the agentic stack end to end
 - [Visualization](/usage/visualization) - Rerun, performance tuning
 - [Streams](/usage/streams/index) - RxPY streams, backpressure, quality filtering
-- [Transports](/usage/transports/index) - LCM, SHM, DDS
 - [Blueprints](/usage/blueprints) - composing modules

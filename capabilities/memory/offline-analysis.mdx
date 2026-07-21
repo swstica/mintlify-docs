@@ -1,64 +1,250 @@
 ---
 title: "Offline analysis"
-description: "Notebook-style analysis of recorded memory2 data: plotting, semantic search, mosaics"
+description: "Ask questions of a recorded session: where did the robot go, what did it see, and where is the thing I care about"
 ---
 
-This page is offline analysis of **recorded** data with the memory2 plotting and search APIs. It is not live robot memory - for that, see [Memory](/capabilities/memory).
+After a run you have a recording - a memory2 `.db` from [Record & replay](/capabilities/memory/record-and-replay) holding every camera frame, lidar scan, and pose from the session. This page is about asking that file questions:
 
-## color cycle
+- **Where did the robot go, and how fast?** Debug navigation without re-running the robot.
+- **What did the environment look like?** Map room lighting, coverage, sensor quality.
+- **When and where did the robot see X?** Search hours of video with a sentence, then jump straight to those frames and places.
 
-You add streams, system auto assigns colors
+That last one is the headline capability: recorded vision becomes a searchable index. Instead of scrubbing video, you type "plant" and get back timestamps, map locations, and the frames themselves.
 
-```python session=plot output=none
+Everything below is an executable notebook (the code blocks run for real in CI) working on `go2_bigoffice`, a bundled five-minute Go2 drive around an office. Swap in your own recording and everything works the same. The query API used throughout is documented in [The memory2 library](/capabilities/memory/memory2-library).
+
+## The session
+
+Open the store and see what was recorded:
+
+<details>
+<summary>Python</summary>
+
+```python title="Python" fold session=mem output=none
+import pickle
+from dimos.mapping.pointclouds.occupancy import general_occupancy, simple_occupancy, height_cost_occupancy
+from dimos.mapping.occupancy.inflation import simple_inflate
+from dimos.memory2.store.sqlite import SqliteStore
+from dimos.memory2.vis.color import Color
+from dimos.memory2.transform import downsample, throttle, speed, smooth
+from dimos.memory2.vis.space.space import Space
+from dimos.utils.data import get_data
+from dimos.memory2.vis.space.elements import Point
+```
+
+</details>
+
+```python title="Python" session=mem
+store = SqliteStore(path=get_data("go2_bigoffice.db"))
+
+for name, stream in store.streams.items():
+   print(stream.summary())
+```
+
+```results
+Stream("color_image"): 4164 items, 2025-12-26 11:09:08 - 2025-12-26 11:14:00 (292.5s)
+Stream("color_image_embedded"): 267 items, 2025-12-26 11:09:12 - 2025-12-26 11:14:00 (288.4s)
+Stream("lidar"): 2251 items, 2025-12-26 11:09:08 - 2025-12-26 11:14:00 (292.3s)
+Stream("odom"): 5465 items, 2025-12-26 11:09:08 - 2025-12-26 11:14:00 (292.5s)
+```
+
+Five minutes of driving: 4k camera frames, 2k lidar scans, 5k odometry samples. Every observation carries its timestamp and the robot's pose, which is what makes the spatial queries below possible.
+
+## Draw where the robot went
+
+`Space` is a top-down spatial canvas: add any stream to it and each observation is drawn at the pose where it was captured, colored by time (turbo colormap, blue early to red late). Adding the camera stream literally draws the robot's trajectory:
+
+```python title="Python" session=mem output=none
+global_map = pickle.loads(get_data("unitree_go2_bigoffice_map.pickle").read_bytes())
+
+drawing = Space()
+
+# this is not necessary but we use a global map as a nice base for a drawing
+drawing.add(global_map)
+drawing.add(store.streams.color_image)
+drawing.to_svg("assets/color_image.svg")
+```
+
+![output](/capabilities/memory/assets/color_image.svg)
+
+One glance answers: what was covered, where the robot lingered, whether it doubled back.
+
+## Derive new streams
+
+Queries are lazy stream pipelines: `.transform()` and `.map()` build new streams from recorded ones without touching the database until you draw or iterate. Two practical examples.
+
+**How fast was the robot moving, where?** Useful for spotting where navigation slowed down or got stuck:
+
+```python title="Python" session=mem output=none
+
+drawing = Space()
+drawing.add(global_map)
+
+drawing.add(
+  store.streams.color_image \
+  # calculate speed in m/s by checking distance between poses and timestamps of observations
+  .transform(speed()) \
+  # rolling window average
+  .transform(smooth(50)))
+
+drawing.to_svg("assets/speed.svg")
+```
+
+![output](/capabilities/memory/assets/speed.svg)
+
+**What is the lighting like around the space?** Any per-frame quantity can be painted onto the map the same way - here, image brightness. This kind of environment map matters later: dark frames are useless for vision, and we will filter on exactly this signal before embedding:
+
+```python title="Python" session=mem output=none
+drawing = Space()
+drawing.add(global_map)
+
+drawing.add(
+  store.streams.color_image \
+  # here we will take 4fps because brightness calculation loads the actual image
+  # observation.data triggers another db query to fetch the data
+  # otherwise observations only hold positions and timestamps
+  .transform(throttle(0.25)) \
+  # we calculate brightness
+  .map(lambda obs: obs.derive(data=obs.data.brightness)))
+
+drawing.to_svg("assets/brightness.svg")
+```
+
+![output](/capabilities/memory/assets/brightness.svg)
+
+## Make the camera stream searchable
+
+To search video with text, embed the frames with CLIP once and save the result as a new stream in the same store. The pipeline filters dark frames (see the lighting map above), picks the sharpest frame in each half-second window, embeds, and saves:
+
+```python title="Python" session=mem skip
+from dimos.models.embedding.clip import CLIPModel
+from dimos.msgs.sensor_msgs.Image import Image
+from dimos.memory2.transform import QualityWindow
+from dimos.memory2.embed import EmbedImages
+
+embedded = store.stream("color_image_embedded", Image)
+clip = CLIPModel()
+
+# Downsample to 2Hz, filter dark images, then embed
+pipeline = (
+    store.streams.color_image.filter(lambda obs: obs.data.brightness > 0.1)
+    .transform(QualityWindow(lambda img: img.sharpness, window=0.5))
+    .transform(EmbedImages(clip))
+    .save(embedded)
+)
+
+print(pipeline)
+
+```
+
+Pipelines are lazy - execute by iterating, or with `.drain()`:
+
+```python skip
+for obs in pipeline:
+    print(f"  [{count}] ts={obs.ts:.2f} pose={obs.pose}")
+```
+
+Our bundled dataset already contains this `color_image_embedded` stream (267 embedded frames of the 4164 recorded).
+
+## Search by text
+
+Now the session is queryable in natural language. Embed a text query and search - matches come back as ordinary observations, so they draw on the map like anything else:
+
+```python title="Python" session=mem output=none
+from dimos.models.embedding.clip import CLIPModel
+
+drawing = Space()
+drawing.add(global_map)
+
+clip = CLIPModel()
+search_vector = clip.embed_text("shop")
+drawing.add(store.streams.color_image_embedded.search(search_vector))
+
+drawing.to_svg("assets/embedding.svg")
+```
+
+![output](/capabilities/memory/assets/embedding.svg)
+
+We can go further: take the top matches, pull only the lidar captured at those moments, and reconstruct just the geometry around them - a focused 3D view of "the places that look like a shop":
+
+```python title="Python" session=mem output=none
+from dimos.models.embedding.clip import CLIPModel
+from dimos.mapping.voxels import VoxelMapTransformer
+drawing = Space()
+
+# this is defined here, but not executed
+matches = store.streams.color_image_embedded.search(search_vector, k=30)
+
+print(matches) # Stream("color_image_embedded") | vector_search(k=50)
+
+# here we execute it once, and feed it into a global mapper, then draw the map
+drawing.add(
+   matches.map(lambda obs: store.streams.lidar.at(obs.ts).last()) \
+   .transform(VoxelMapTransformer()) \
+   .last().data)
+
+# then we add matches to the map
+drawing.add(matches)
+
+drawing.to_svg("assets/embedding_focused.svg")
+```
+
+```results
+Stream("color_image_embedded") | vector_search(k=30)
+13:15:15.190 [inf][dimos/mapping/voxels.py       ] VoxelGrid using device: CUDA:0
+```
+
+![output](/capabilities/memory/assets/embedding_focused.svg)
+
+And view the matching frames themselves:
+
+<details>
+<summary>Python</summary>
+
+```python title="Python" fold session=mem
+import matplotlib
+import matplotlib.pyplot as plt
 import math
-import random
 
-from dimos.memory2.vis.plot.elements import Series
-from dimos.memory2.vis.plot.plot import Plot
+def plot_mosaic(frames, path, cols=5):
+    matplotlib.use("Agg")
+    rows = math.ceil(len(frames) / cols)
+    aspect = frames[0].width / frames[0].height
+    fig_w, fig_h = 12, 12 * rows / (cols * aspect)
 
-rng = random.Random(42)
-xs = [i * 0.1 for i in range(120)]
+    fig, axes = plt.subplots(rows, cols, figsize=(fig_w, fig_h))
+    fig.patch.set_facecolor("black")
+    for i, ax in enumerate(axes.flat):
+        if i < len(frames):
+            ax.imshow(frames[i].data)
+            for spine in ax.spines.values():
+                spine.set_color("black")
+                spine.set_linewidth(0)
+            ax.set_xticks([])
+            ax.set_yticks([])
+        else:
+            ax.axis("off")
+    plt.subplots_adjust(wspace=0.02, hspace=0.02, left=0, right=1, top=1, bottom=0)
+    plt.savefig(path, facecolor="black", dpi=100, bbox_inches="tight", pad_inches=0)
+    plt.close()
 
-color_check = Plot()
-for i in range(14):
-    phase = rng.uniform(0, 2 * math.pi)
-    freq = rng.uniform(0.5, 1.8)
-    amp = rng.uniform(0.6, 1.4)
-    offset = i * 0.5  # vertical separation so curves don't overlap
-    ys = [amp * math.sin(freq * x + phase) + offset for x in xs]
-
-    color_check.add(Series(ts=xs, values=ys, label=f"curve {i + 1}"))
-
-color_check.to_svg("assets/plot_colors.svg")
 ```
 
-![output](/capabilities/memory/assets/plot_colors.svg)
+</details>
 
-named colors can also be used explicitly. when you pin a series to one of
-the named colors, the auto-cycle excludes it for the remaining series, so
-you never end up with two lines that share a color by accident.
-
-```python session=plot output=none
-from dimos.memory2.vis import color
-from dimos.memory2.vis.plot.elements import Series, HLine, Style
-
-p = Plot()
-# auto → blue
-p.add(Series(ts=xs, values=[math.sin(x) for x in xs]))
-# explicit green, dotted
-p.add(Series(ts=xs, values=[math.cos(x) for x in xs], color=color.red, style=Style.dotted))
-# auto → yellow (red is excluded)
-p.add(Series(ts=xs, values=[math.sin(2 * x) for x in xs]))
-# explicit color
-p.add(HLine(y=0, style=Style.dashed, opacity=0.5, color="#ff0000"))
-p.to_svg("assets/plot_named.svg")
+```python title="Python" session=mem
+plot_mosaic(matches.map(lambda obs: obs.data).to_list(), "assets/grid.png")
 ```
 
-![output](/capabilities/memory/assets/plot_named.svg)
+![output](/capabilities/memory/assets/grid.png)
 
-## speed plot
+Search, locate, look - the whole point of pose-stamped recording in three cells.
 
-you can assign different axes to different time series, label them etc
+## Case study: find the plants
+
+A full worked example, end to end: did the robot see plants during the session, where exactly are they in the building, and can we verify with a detector? This is the workflow for any "find X in my recordings" task. It also plots over time rather than space, using the `Plot` API (time-series companion to `Space`).
+
+First, a feel for the session on a timeline - speed, brightness, and elapsed time on separate axes:
 
 ```python session=robotdata output=none
 from dimos.memory2.store.sqlite import SqliteStore
@@ -96,9 +282,9 @@ plot.to_svg("assets/plot_robot_data.svg")
 
 ![output](/capabilities/memory/assets/plot_robot_data.svg)
 
-## Semantic search
+### Score every frame against "plant"
 
-Let's find some plants!
+Search the embedded stream and re-sort by time, giving a "plant-ness over the session" signal:
 
 ```python session=robotdata
 from dimos.memory2.vis.plot.elements import Series, HLine, Style
@@ -149,11 +335,9 @@ Stream("materialize"): 267 items, 2025-12-26 11:09:12 - 2025-12-26 11:14:00 (288
 
 ![output](/capabilities/memory/assets/plot_plantness.svg)
 
-We can be pretty sure the robot saw some plants by peaks at beginning and end of data, but this graph doesn't look great, why?
+There are clear peaks at the beginning and end of the run - but the graph is gappy and ugly. Why?
 
-Embeddings are calculated according to some minimum picture brightness. Completely dark images are both useless and also semantically close to everything.
-
-Let's investigate how our embedding stream relates to image brightness:
+Embeddings were only computed above a minimum brightness. Completely dark images are both useless and semantically close to everything. Overlay brightness to confirm the gaps line up:
 
 ```python session=robotdata
 
@@ -176,9 +360,8 @@ plot.to_svg("assets/plot_plantness_brightness.svg")
 ```
 
 ![output](/capabilities/memory/assets/plot_plantness_brightness.svg)
-We see that stuff isn't embedded below some minimum brightness.
 
-Let's now fill the gaps in our semantic graph a bit, looks super ugly above, we will tell plotter to consider unmapped values as zero and connect values that are within 7.5 seconds, smooth with 5 second time window, and normalize the data
+Nothing is embedded below the brightness floor. Clean the signal up: treat unmapped values as zero, connect points within 7.5 s, smooth over a 5 s window, normalize:
 
 ```python session=robotdata
 
@@ -200,9 +383,9 @@ plot.to_svg("assets/plot_plantness_gap_fill.svg")
 
 ![output](/capabilities/memory/assets/plot_plantness_gap_fill.svg)
 
-Looks better, these are some very obvious peaks, I'm curious let's see what was captured then.
+### Auto-detect the peaks and verify with a VLM
 
-Let's auto-detect the peaks, extract images from those moments, and run a 2D detector
+Obvious peaks. Auto-detect them, pull the frames at those moments, and run a detector (Moondream, one of the [VLM backends](/capabilities/perception)) to verify there really are plants:
 
 ```python skip session=robotdata
 from dimos.mapping.voxels import VoxelMapTransformer
@@ -271,13 +454,11 @@ t= 279.6s score=0.230 prominence=0.030
 
 ![output](/capabilities/memory/assets/plot_plantness_autopeaks_map.svg)
 
-## Which peaks are significant?
+### Which peaks are significant?
 
-We got 15 peaks back, we ran a detector on all of them so we can start projecting into 3D but let's say we want some sort of pre-filter of just globally significant peaks. we can see most peaks prominence sits around 0.02-0.03 and only a couple (0.067 at t=37s, 0.047 at t=240s) really stand out. We might want to auto detect those.
+We got 15 peaks back. Most prominences sit around 0.02-0.03 and only a couple (0.067 at t=37s, 0.047 at t=240s) really stand out. `significant()` replaces eyeballing that cutoff by thresholding on the distribution of prominences itself (default: MAD, median absolute deviation).
 
-`significant()` replaces that guesswork by thresholding on the distribution of prominences itself. Default outlier detection uses MAD (median absolute deviation)
-
-Once we put the surviving peaks on the timeline we get two very obvious plants.
+Once the surviving peaks go on the timeline, we get two very obvious plants:
 
 ```python skip session=robotdata
 from dimos.memory2.transform import significant
@@ -303,14 +484,11 @@ plot.to_svg("assets/plot_plantness_significant.svg")
 
 ![output](/capabilities/memory/assets/plants_meaningful.png)
 
-Rule of thumb: keep a small absolute floor on `peaks(prominence=...)` to
-reject shape-noise, then let `significant()` pick the statistical cutoff.
+Rule of thumb: keep a small absolute floor on `peaks(prominence=...)` to reject shape-noise, then let `significant()` pick the statistical cutoff.
 
-## Semantic peak analysis
+### Zoom into a hotspot
 
-Let's focus on those two peaks. load all images in the vicinity of a detection,
-
-We'll also pull all lidar frames in their vicinity and reconstruct global maps for those areas.
+Focus on the strongest peak: load every image captured within 2.5 m of it (filtered for brightness and sharpness), rebuild the local 3D map from the lidar around it, and run the detector on all nearby views:
 
 ```python skip session=robotdata
 
@@ -357,7 +535,9 @@ m.data.save("assets/plants_peak_detections.png")
 ![output](/capabilities/memory/assets/peak_space.svg)
 ![output](/capabilities/memory/assets/plants_peak_detections.png)
 
-## 3D Projection
+### Project detections into 3D
+
+Finally, lift the 2D detections into 3D boxes on the map using the camera model and the pointcloud - from "the robot saw a plant at t=37s" to "there is a plant *here*":
 
 ```python skip session=robotdata output=none
 from dimos.perception.detection.type.detection3d.imageDetections3DPC import (
@@ -411,10 +591,55 @@ drawing.to_svg("assets/peak_detections.svg")
 
 ![output](/capabilities/memory/assets/peak_detections.svg)
 
-# TODO further steps
+That is the full loop: text query, temporal peaks, spatial hotspot, verified detections, 3D locations - all from one recorded drive, none of it requiring the robot again.
 
-- These are 3D bounding boxes with associated pointclouds, render in rerun
+## Appendix: plotting API notes
 
-- Some basic statistical outlier filters - we have many overlaping detections here and we can be pretty sure there are plants right of the robot, but unclear about left.
+Small things worth knowing about `Plot` when you build your own analyses.
 
-- Now that we have 3d locations in space, we can load all camera images observing detections in space (not just rely on radius around the embedding peak) see in how many of these images we actually detect an object. (another strategy for false positive filtering)
+Colors auto-cycle as you add series:
+
+```python session=plot output=none
+import math
+import random
+
+from dimos.memory2.vis.plot.elements import Series
+from dimos.memory2.vis.plot.plot import Plot
+
+rng = random.Random(42)
+xs = [i * 0.1 for i in range(120)]
+
+color_check = Plot()
+for i in range(14):
+    phase = rng.uniform(0, 2 * math.pi)
+    freq = rng.uniform(0.5, 1.8)
+    amp = rng.uniform(0.6, 1.4)
+    offset = i * 0.5  # vertical separation so curves don't overlap
+    ys = [amp * math.sin(freq * x + phase) + offset for x in xs]
+
+    color_check.add(Series(ts=xs, values=ys, label=f"curve {i + 1}"))
+
+color_check.to_svg("assets/plot_colors.svg")
+```
+
+![output](/capabilities/memory/assets/plot_colors.svg)
+
+Named colors can also be used explicitly. When you pin a series to one of the named colors, the auto-cycle excludes it for the remaining series, so you never end up with two lines that share a color by accident:
+
+```python session=plot output=none
+from dimos.memory2.vis import color
+from dimos.memory2.vis.plot.elements import Series, HLine, Style
+
+p = Plot()
+# auto -> blue
+p.add(Series(ts=xs, values=[math.sin(x) for x in xs]))
+# explicit green, dotted
+p.add(Series(ts=xs, values=[math.cos(x) for x in xs], color=color.red, style=Style.dotted))
+# auto -> yellow (red is excluded)
+p.add(Series(ts=xs, values=[math.sin(2 * x) for x in xs]))
+# explicit color
+p.add(HLine(y=0, style=Style.dashed, opacity=0.5, color="#ff0000"))
+p.to_svg("assets/plot_named.svg")
+```
+
+![output](/capabilities/memory/assets/plot_named.svg)

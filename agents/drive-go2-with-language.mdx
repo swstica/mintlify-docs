@@ -5,9 +5,19 @@ description: "Tag places, then send the robot back to them by name or descriptio
 
 This is the flagship agent demo: walk the robot around, name a place, and later say "go to the kitchen" - the robot finds it. It works because the agentic stack runs **SpatialMemory**, a live place map built while the robot moves (see [Memory](/capabilities/memory) for how it fits with the other memory systems).
 
-Works in simulation or on a real Go2. Simulation shown; for hardware, drop `--simulation` and set `ROBOT_IP` (see the [Go2 platform guide](/platforms/quadruped/go2/index)).
+This demo is at its best on a real Go2 in a real space - the place map is built from what the camera actually sees. No robot at hand? The same commands run in MuJoCo with `--simulation` (a replay cannot work here: the robot has to be able to *move* to navigate, and a recording cannot act).
 
 ## Start the stack
+
+On a real Go2 (network setup: [Go2 platform guide](/platforms/quadruped/go2/index)):
+
+```bash
+export OPENAI_API_KEY=sk-...
+export ROBOT_IP=<YOUR_ROBOT_IP>
+dimos run unitree-go2-agentic
+```
+
+Without hardware:
 
 ```bash
 export OPENAI_API_KEY=sk-...

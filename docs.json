@@ -71,12 +71,12 @@
             "group": "Memory",
             "pages": [
               "capabilities/memory/index",
+              "capabilities/memory/memory2-library",
               "capabilities/memory/record-and-replay",
               "capabilities/memory/offline-analysis",
               {
-                "group": "Reference",
+                "group": "memory2 in depth",
                 "pages": [
-                  "capabilities/memory/reference/intro",
                   "capabilities/memory/reference/architecture",
                   "capabilities/memory/reference/streaming",
                   "capabilities/memory/reference/embeddings"
@@ -97,9 +97,7 @@
             "group": "Manipulation",
             "pages": [
               "capabilities/manipulation/index",
-              "capabilities/manipulation/collect-and-train",
-              "capabilities/manipulation/vr-teleoperation",
-              "capabilities/manipulation/adding_a_custom_arm"
+              "capabilities/manipulation/collect-and-train"
             ]
           },
           {
@@ -111,7 +109,8 @@
           {
             "group": "Teleoperation",
             "pages": [
-              "capabilities/teleoperation/hosted"
+              "capabilities/teleoperation/hosted",
+              "capabilities/teleoperation/vr-teleoperation"
             ]
           }
         ]
@@ -138,7 +137,8 @@
             "pages": [
               "platforms/arms/a1z",
               "platforms/arms/a750",
-              "platforms/arms/openarm"
+              "platforms/arms/openarm",
+              "platforms/arms/adding_a_custom_arm"
             ]
           }
         ]
@@ -409,7 +409,7 @@
     },
     {
       "source": "/docs/capabilities/manipulation/adding_a_custom_arm.md",
-      "destination": "/capabilities/manipulation/adding_a_custom_arm"
+      "destination": "/platforms/arms/adding_a_custom_arm"
     },
     {
       "source": "/docs/capabilities/manipulation/openarm_integration.md",
@@ -582,6 +582,18 @@
     {
       "source": "/usage",
       "destination": "/usage/how-dimos-fits-together"
+    },
+    {
+      "source": "/capabilities/manipulation/adding_a_custom_arm",
+      "destination": "/platforms/arms/adding_a_custom_arm"
+    },
+    {
+      "source": "/capabilities/manipulation/vr-teleoperation",
+      "destination": "/capabilities/teleoperation/vr-teleoperation"
+    },
+    {
+      "source": "/capabilities/memory/reference/intro",
+      "destination": "/capabilities/memory/memory2-library"
     }
   ]
 }

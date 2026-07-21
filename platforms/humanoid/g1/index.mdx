@@ -1,6 +1,13 @@
 ---
 title: "Unitree G1"
+description: "Bring-up for the Unitree G1 humanoid: SSH access, onboard install, sport mode, and the remote viewer"
 ---
+
+![Unitree G1](/platforms/humanoid/g1/assets/g1.jpg)
+
+This page is the hardware bring-up runbook: get SSH access, install DimOS onboard, put the robot in sport mode, and run the onboard navigation blueprint with a remote viewer. DimOS runs *on the G1 itself*; your laptop is a viewer.
+
+No hardware? `dimos --simulation run unitree-g1-sim` runs the humanoid in MuJoCo, and `unitree-g1-agentic-sim` adds the LLM agent - both from any machine. Run `dimos list | grep g1` for the full blueprint set (navigation, detection, joystick, whole-body control, and more).
 
 ## Requirements
 

@@ -36,8 +36,11 @@ ArUco/AprilTag detection with pose estimation, published straight into the TF tr
 | YOLO-E | Open-vocabulary, promptable detection and segmentation |
 | CLIP | Place memory embeddings, text-to-frame recall |
 | DINOv2 | Appearance embeddings for re-identification |
+| Moondream | VLM detection - the default `detection_model`; also used to verify detections in [offline analysis](/capabilities/memory/offline-analysis) |
 | Qwen VL | Open-vocabulary scene questions (`ask_vlm`) |
 | ArUco / AprilTag (OpenCV) | Marker pose estimation |
+
+DimOS ships two interchangeable VLM backends behind one interface (`dimos/models/vl/`): **Moondream** (small, fast, the default for detection via the `detection_model` config) and **Qwen VL** (larger, used for open-ended scene questions). Both local; a hosted Moondream variant also exists.
 
 ## Status, honestly
 

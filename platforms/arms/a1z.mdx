@@ -13,6 +13,23 @@ This page is the authoritative, end-to-end A1Z reference. If you only need the h
 The A1Z has **no brakes and no e-stop button** - only the PSU power switch. When motors disable, the arm goes limp and falls. Support the arm and keep the workspace clear before starting any hardware blueprint. Enabling the G1Z also initializes the gripper. Never leave it energized unattended.
 </Warning>
 
+## Before you start: clone the dimos repo
+
+<Info>
+**Everything on this page runs from inside a clone of the [dimos repository](https://github.com/dimensionalOS/dimos)** - the setup scripts, `uv sync`, and every `uv run dimos` command below assume the repo root is your working directory. The quickstart's `pip install dimos` alone is **not** enough for the A1Z; without the repo checkout, none of the commands on this page will work.
+</Info>
+
+First install the system dependencies for your OS with the full setup guide - [Ubuntu](/installation/ubuntu) or [macOS](/installation/osx) - then clone the repo and work from its root:
+
+```bash
+# fetch large files on-demand instead of pulling all of them immediately
+export GIT_LFS_SKIP_SMUDGE=1
+git clone https://github.com/dimensionalOS/dimos.git
+cd dimos
+```
+
+All commands in the rest of this guide are run from this directory.
+
 ## Host setup
 
 The G1Z requires the vendor SDK's `gripper` branch - vendor `main` does not accept `with_gripper` and cannot actuate CAN motor 7. The one-command setup pins the correct SDK for you.

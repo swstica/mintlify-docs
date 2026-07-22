@@ -30,8 +30,7 @@
           "quickstart",
           "requirements",
           "installation/ubuntu",
-          "installation/osx",
-          "installation/nix"
+          "installation/osx"
         ]
       },
       {
@@ -226,10 +225,6 @@
     {
       "source": "/docs/installation/osx.md",
       "destination": "/installation/osx"
-    },
-    {
-      "source": "/docs/installation/nix.md",
-      "destination": "/installation/nix"
     },
     {
       "source": "/docs/usage/index.md",

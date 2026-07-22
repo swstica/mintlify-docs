@@ -1,11 +1,9 @@
 ---
 title: "Quickstart"
-description: "Install DimOS, replay a robot session with no hardware, then run a real Unitree Go2."
+description: "Install DimOS, replay a robot session with no hardware, then talk to the robot through an LLM agent."
 ---
 
-In fifteen minutes you will: install DimOS, replay a recorded Unitree Go2 session in the Rerun viewer with no hardware, and then run the same stack on a real Go2.
-
-This page is geared toward the Unitree Go2. If you were given a Galaxea A1Z arm instead, start with the [A1Z guide](/platforms/arms/a1z).
+In fifteen minutes you will: install DimOS, replay a recorded Unitree Go2 session in the Rerun viewer with no hardware, and then drive an agentic stack with natural language. Everything on this page runs on a laptop.
 
 If you use coding agents (Claude Code, OpenClaw, or similar), point them at [`AGENTS.md`](https://github.com/dimensionalOS/dimos/blob/main/AGENTS.md) in the repo.
 
@@ -29,7 +27,7 @@ DimOS supports Python 3.10 to 3.12 and targets 3.12. The examples use [`uv`](htt
 ```bash
 uv venv --python 3.12
 source .venv/bin/activate
-uv pip install --pre 'dimos[base,unitree]'
+uv pip install 'dimos[base,unitree]'
 ```
 
 Extras keep installs lean: `base` is the runtime, modules, transports, and CLI; `unitree` adds WebRTC and skills for Go2 / G1 (real or replayed).
@@ -60,23 +58,45 @@ dimos log -f      # follow logs
 dimos stop        # shut the stack down
 ```
 
-## Step 3: Real robot
+## Step 3: Talk to the robot
 
-For a physical Unitree Go2 over WebRTC, set the robot's IP:
+Agentic blueprints add an LLM agent that controls the robot by calling skills. The default model is `gpt-4o`, so set your API key first (or see the local-LLM variant below):
+
+```bash
+export OPENAI_API_KEY=sk-...
+dimos --simulation run unitree-go2-agentic
+```
+
+Then, from a second terminal:
+
+```bash
+dimos agent-send "walk forward one meter, then say hello"
+dimos log -f
+```
+
+There is also a web chat with voice input at `http://localhost:5555`.
+
+The agent's tools are ordinary MCP skills, and you can call them yourself with no LLM in the loop:
+
+```bash
+dimos mcp list-tools
+dimos mcp call relative_move --arg forward=0.5
+```
+
+No OpenAI key? Run the same stack against a local model with [Ollama](https://ollama.com) (`ollama serve` must be running):
+
+```bash
+dimos --simulation run unitree-go2-agentic-ollama
+```
+
+How this works, and how to add your own skills: [Agents](/agents).
+
+## Step 4: Real robot
+
+For a physical Unitree Go2 over WebRTC:
 
 ```bash
 export ROBOT_IP=<YOUR_ROBOT_IP>
-```
-
-Newer Go2 firmware encrypts the connection. If you were given an AES key, set it the same way (robots on older firmware only need `ROBOT_IP`):
-
-```bash
-export UNITREE_AES_128_KEY=<YOUR_AES_KEY>
-```
-
-Then run the Go2 blueprint:
-
-```bash
 dimos run unitree-go2
 ```
 

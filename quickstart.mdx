@@ -27,6 +27,8 @@ If you use coding agents (Claude Code, OpenClaw, or similar), point them at [`AG
 DimOS supports Python 3.10 to 3.12 and targets 3.12. The examples use [`uv`](https://docs.astral.sh/uv/); plain `python -m venv` and `pip` work too.
 
 ```bash
+# fetch large files on-demand instead of pulling all of them immediately
+export GIT_LFS_SKIP_SMUDGE=1
 git clone https://github.com/dimensionalOS/dimos.git
 cd dimos
 uv venv --python 3.12
